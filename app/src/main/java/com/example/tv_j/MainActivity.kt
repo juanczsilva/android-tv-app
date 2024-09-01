@@ -1,18 +1,24 @@
 package com.example.tv_j
 
 import android.content.Context
+import android.content.Intent
+import android.graphics.drawable.Drawable
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.ListView
 import android.widget.ProgressBar
+import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -21,6 +27,7 @@ import androidx.media3.datasource.HttpDataSource.HttpDataSourceException
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.example.tv_j.R.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -32,25 +39,27 @@ class MainActivity : AppCompatActivity() {
     private lateinit var playerView: PlayerView
     private lateinit var exoPlayer: ExoPlayer
     private lateinit var audioManager: AudioManager
-
-    private lateinit var progressBarView: View
-    private lateinit var progressBar: ProgressBar
+    private lateinit var listView: ListView
+    private lateinit var numberView: TextView
 
     private var lastChannelKeyPressed: Int = 0
+    private var isBackPressed = false
+    private val backLongPressTimeout = 2000L
+    private val looperHandler = Handler(Looper.getMainLooper())
 
-    private val testUrl: String = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+//    private val testUrl: String =
+//        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        setContentView(layout.activity_main)
 
         supportActionBar?.hide()
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        progressBarView = findViewById(R.id.progressBarView)
-        progressBar = findViewById(R.id.progressBar)
 
-        playerView = findViewById(R.id.playerView)
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+
+        playerView = findViewById(id.playerView)
         exoPlayer = ExoPlayer.Builder(this).build()
         exoPlayer.addListener(HandlePlayerEvents())
         exoPlayer.playWhenReady = true
@@ -58,6 +67,9 @@ class MainActivity : AppCompatActivity() {
         playerView.useController = false
 
         setupChannels()
+        populateList()
+
+        numberView = findViewById(R.id.currentNumber)
 
         exoPlayer.prepare()
 
@@ -76,11 +88,10 @@ class MainActivity : AppCompatActivity() {
         override fun onPlayerError(error: PlaybackException) {
             val cause = error.cause
             if (cause is HttpDataSourceException) {
-                val httpError = cause
-                if (httpError is InvalidResponseCodeException) {
-                    println("### Error ${httpError.responseCode}: ${httpError.responseMessage} ###")
+                if (cause is InvalidResponseCodeException) {
+                    println("### Error ${cause.responseCode}: ${cause.responseMessage} ###")
                 } else {
-                    println("### Error ${httpError.cause.toString()}: ${httpError.message} ###")
+                    println("### Error ${cause.cause.toString()}: ${cause.message} ###")
                 }
             } else {
                 println("### Error ${error.errorCode}: ${error.message} ###")
@@ -105,7 +116,7 @@ class MainActivity : AppCompatActivity() {
     private fun setupChannels() = runBlocking {
         println("ENTRO EN setupChannels()")
         val newItems: MutableList<MediaItem> = mutableListOf(
-            MediaItem.Builder().setUri(Uri.parse(testUrl)).setMediaId("0").build()
+//            MediaItem.Builder().setUri(Uri.parse(testUrl)).setMediaId("0").build()
         )
         println("------------- LISTA -------------")
         val iterate = Channels.List.listIterator()
@@ -121,7 +132,6 @@ class MainActivity : AppCompatActivity() {
         println("---------------------------------")
         exoPlayer.setMediaItems(newItems)
         println("SETEO LOS MediaItems")
-        setLoading(false)
     }
 
     private fun genMediaItem(id: String, url: String): MediaItem {
@@ -131,7 +141,7 @@ class MainActivity : AppCompatActivity() {
             .setMimeType(MimeTypes.APPLICATION_M3U8).build()
     }
 
-    suspend fun fetchStreamUrl(url: String): String {
+    private suspend fun fetchStreamUrl(url: String): String {
         return withContext(Dispatchers.IO) {
             var stream: String = ""
             try {
@@ -159,25 +169,47 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun populateList() {
+        listView = findViewById(R.id.listView)
+        val adapter = CustomListAdapter(this, Channels.List)
+        listView.adapter = adapter
+        listView.onItemClickListener = AdapterView.OnItemClickListener { _, _, position, _ ->
+//            println("itemSelect: position = $position")
+            listView.visibility = View.GONE
+            if (position != exoPlayer.currentMediaItemIndex) {
+                exoPlayer.seekToDefaultPosition(position)
+            }
+            showAndHideNumberView(
+                (listView.getItemAtPosition(position) as Channels.Companion.ListItem).number)
+        }
+        listView.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>, view: View, position: Int, id: Long) {
+                val offset = (listView.height / 2) - (view.height / 2)
+                listView.setSelectionFromTop(position, offset)
+            }
+            override fun onNothingSelected(parent: AdapterView<*>) { }
+        }
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         return when (keyCode) {
             KeyEvent.KEYCODE_DPAD_CENTER -> {
-                Toast.makeText(this,
-                    "KeyEvent.KEYCODE_DPAD_CENTER",
-                    Toast.LENGTH_SHORT
-                ).show()
-                progressBar.visibility = (if (progressBar.visibility == View.VISIBLE)
-                        View.GONE
-                    else
-                        View.VISIBLE)
+                if (listView.visibility != View.VISIBLE) listView.visibility = View.VISIBLE
+                true
+            }
+            KeyEvent.KEYCODE_BACK -> {
+                if (!isBackPressed) {
+                    isBackPressed = true
+                    looperHandler.postDelayed(longPressRunnable, backLongPressTimeout)
+                }
                 true
             }
             KeyEvent.KEYCODE_DPAD_UP -> {
-                changeChannel(-1)
+                if (listView.visibility != View.VISIBLE) changeChannel(-1)
                 true
             }
             KeyEvent.KEYCODE_DPAD_DOWN -> {
-                changeChannel(1)
+                if (listView.visibility != View.VISIBLE) changeChannel(1)
                 true
             }
             KeyEvent.KEYCODE_DPAD_LEFT -> {
@@ -188,6 +220,31 @@ class MainActivity : AppCompatActivity() {
                 adjustVolume(1)
                 true
             }
+            KeyEvent.KEYCODE_MENU -> {
+                val intent = Intent(Settings.ACTION_DISPLAY_SETTINGS)
+                if (intent.resolveActivity(packageManager) != null) {
+                    startActivity(intent)
+                } else {
+                    startActivity(Intent(Settings.ACTION_SETTINGS))
+                }
+                true
+            }
+            else -> {
+                super.onKeyDown(keyCode, event)
+            }
+        }
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+        return when (keyCode) {
+            KeyEvent.KEYCODE_BACK -> {
+                if (isBackPressed) {
+                    looperHandler.removeCallbacks(longPressRunnable)
+                    isBackPressed = false
+                    onBackButtonShortPressed()
+                }
+                true
+            }
             else -> {
                 super.onKeyDown(keyCode, event)
             }
@@ -195,14 +252,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun changeChannel(direction: Int) {
+        var changedChannelPosition: Int
         if (direction > 0) {
-            if (exoPlayer.hasNextMediaItem()) exoPlayer.seekToNextMediaItem()
-            else exoPlayer.seekToDefaultPosition(0)
+            if (exoPlayer.hasNextMediaItem()) {
+                changedChannelPosition = exoPlayer.nextMediaItemIndex
+                exoPlayer.seekToNextMediaItem()
+            } else {
+                changedChannelPosition = 0
+                exoPlayer.seekToDefaultPosition(0)
+            }
         } else {
-            if (exoPlayer.hasPreviousMediaItem()) exoPlayer.seekToPreviousMediaItem()
-            else exoPlayer.seekToDefaultPosition(exoPlayer.mediaItemCount - 1)
+            if (exoPlayer.hasPreviousMediaItem()) {
+                changedChannelPosition = exoPlayer.previousMediaItemIndex
+                exoPlayer.seekToPreviousMediaItem()
+            } else {
+                changedChannelPosition = (exoPlayer.mediaItemCount - 1)
+                exoPlayer.seekToDefaultPosition(exoPlayer.mediaItemCount - 1)
+            }
         }
+        listView.setSelection(changedChannelPosition)
         lastChannelKeyPressed = direction
+        showAndHideNumberView(
+            (listView.getItemAtPosition(changedChannelPosition) as Channels.Companion.ListItem).number)
     }
 
     private fun adjustVolume(direction: Int) {
@@ -212,9 +283,34 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun setLoading(loading: Boolean) {
-        progressBarView.visibility = if (loading) View.VISIBLE else View.GONE
-        progressBar.visibility = if (loading) View.VISIBLE else View.GONE
+    private val longPressRunnable = Runnable {
+        if (isBackPressed) {
+            onBackButtonLongPressed()
+        }
     }
 
+    private fun onBackButtonLongPressed() {
+        finishAffinity()
+    }
+
+    private fun onBackButtonShortPressed() {
+//        println("Botón de volver atrás presionado y liberado rápidamente")
+        if (listView.visibility == View.VISIBLE) {
+            listView.visibility = View.GONE
+            if (listView.selectedItemPosition != exoPlayer.currentMediaItemIndex) {
+                listView.setSelection(exoPlayer.currentMediaItemIndex)
+            }
+        }
+    }
+
+    private val hideRunnable = Runnable {
+        numberView.visibility = View.GONE
+    }
+
+    private fun showAndHideNumberView(channelNumber: Int) {
+        looperHandler.removeCallbacks(hideRunnable)
+        numberView.text = channelNumber.toString()
+        numberView.visibility = View.VISIBLE
+        looperHandler.postDelayed(hideRunnable, 5000L)
+    }
 }
