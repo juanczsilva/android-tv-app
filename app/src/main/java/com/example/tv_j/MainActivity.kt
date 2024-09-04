@@ -31,6 +31,8 @@ import com.example.tv_j.R.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -46,6 +48,7 @@ class MainActivity : AppCompatActivity() {
     private var isBackPressed = false
     private val backLongPressTimeout = 2000L
     private val looperHandler = Handler(Looper.getMainLooper())
+    private var loadedFromCache = false
 
 //    private val testUrl: String =
 //        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
@@ -68,6 +71,10 @@ class MainActivity : AppCompatActivity() {
 
         setupChannels()
         populateList()
+
+        if (loadedFromCache) {
+            Toast.makeText(this, "Cache...", Toast.LENGTH_LONG).show()
+        }
 
         numberView = findViewById(R.id.currentNumber)
 
@@ -115,22 +122,30 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupChannels() = runBlocking {
         println("ENTRO EN setupChannels()")
-        val newItems: MutableList<MediaItem> = mutableListOf(
+        val mediaItems: MutableList<MediaItem> = mutableListOf(
 //            MediaItem.Builder().setUri(Uri.parse(testUrl)).setMediaId("0").build()
         )
-        println("------------- LISTA -------------")
-        val iterate = Channels.List.listIterator()
-        while (iterate.hasNext()) {
-            val listItem: Channels.Companion.ListItem = iterate.next()
-            if (listItem.url.contains("youtube") || listItem.url.contains("render-py-6goa")) {
-                listItem.url = fetchStreamUrl(listItem.url)
-                iterate.set(listItem)
+        if (loadListFromCache()) {
+            Channels.List.forEach { listItem ->
+                mediaItems.add(genMediaItem(listItem.number.toString(), listItem.url))
             }
-            println("(${listItem.number.toString()}) ${listItem.name} - ${listItem.url}")
-            newItems.add(genMediaItem(listItem.number.toString(), listItem.url))
+            loadedFromCache = true
+        } else {
+            println("------------- LISTA -------------")
+            val iterate = Channels.List.listIterator()
+            while (iterate.hasNext()) {
+                val listItem: Channels.Companion.ListItem = iterate.next()
+                if (listItem.url.contains("youtube") || listItem.url.contains("render-py-6goa")) {
+                    listItem.url = fetchStreamUrl(listItem.url)
+                    iterate.set(listItem)
+                }
+                println("(${listItem.number.toString()}) ${listItem.name} - ${listItem.url}")
+                mediaItems.add(genMediaItem(listItem.number.toString(), listItem.url))
+            }
+            saveListToCache()
+            println("---------------------------------")
         }
-        println("---------------------------------")
-        exoPlayer.setMediaItems(newItems)
+        exoPlayer.setMediaItems(mediaItems)
         println("SETEO LOS MediaItems")
     }
 
@@ -221,12 +236,7 @@ class MainActivity : AppCompatActivity() {
                 true
             }
             KeyEvent.KEYCODE_MENU -> {
-                val intent = Intent(Settings.ACTION_DISPLAY_SETTINGS)
-                if (intent.resolveActivity(packageManager) != null) {
-                    startActivity(intent)
-                } else {
-                    startActivity(Intent(Settings.ACTION_SETTINGS))
-                }
+                startActivity(Intent(Settings.ACTION_SETTINGS))
                 true
             }
             else -> {
@@ -313,4 +323,43 @@ class MainActivity : AppCompatActivity() {
         numberView.visibility = View.VISIBLE
         looperHandler.postDelayed(hideRunnable, 5000L)
     }
+
+    private fun saveListToCache() {
+        val sharedPreferences = getSharedPreferences("cache", Context.MODE_PRIVATE)
+        val editor = sharedPreferences.edit()
+        val jsonArray = JSONArray()
+        for (item in Channels.List) {
+            val jsonObject = JSONObject()
+            jsonObject.put("number", item.number)
+            jsonObject.put("name", item.name)
+            jsonObject.put("url", item.url)
+            jsonObject.put("opts", item.opts)
+            jsonArray.put(jsonObject)
+        }
+        editor.putString("cached_list", jsonArray.toString())
+        editor.putLong("timestamp", System.currentTimeMillis())
+        editor.apply()
+    }
+
+    private fun loadListFromCache(): Boolean {
+        val sharedPreferences = getSharedPreferences("cache", Context.MODE_PRIVATE)
+        val timestamp = sharedPreferences.getLong("timestamp", 0L)
+        if (System.currentTimeMillis() - timestamp > 6 * 60 * 60 * 1000) {
+            return false
+        }
+        val jsonList = sharedPreferences.getString("cached_list", null) ?: return false
+        val jsonArray = JSONArray(jsonList)
+        Channels.List.clear()
+        for (i in 0 until jsonArray.length()) {
+            val jsonObject = jsonArray.getJSONObject(i)
+            Channels.List.add(Channels.Companion.ListItem(
+                number = jsonObject.getInt("number"),
+                name = jsonObject.getString("name"),
+                url = jsonObject.getString("url"),
+                opts = jsonObject.getString("opts")
+            ))
+        }
+        return true
+    }
+
 }
