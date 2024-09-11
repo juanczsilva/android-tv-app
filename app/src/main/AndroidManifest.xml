@@ -18,6 +18,9 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.TVJ">
         <activity
+            android:name=".EditActivity"
+            android:exported="false" />
+        <activity
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>

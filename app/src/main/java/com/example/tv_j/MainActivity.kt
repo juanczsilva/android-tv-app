@@ -46,7 +46,10 @@ class MainActivity : AppCompatActivity() {
 
     private var lastChannelKeyPressed: Int = 0
     private var isBackPressed = false
-    private val backLongPressTimeout = 2000L
+    private var isBackLongPress = false
+    private var isMenuPressed = false
+    private var isMenuLongPress = false
+    private val longPressTimeout = 2000L
     private val looperHandler = Handler(Looper.getMainLooper())
     private var loadedFromCache = false
 
@@ -69,6 +72,7 @@ class MainActivity : AppCompatActivity() {
         playerView.player = exoPlayer
         playerView.useController = false
 
+        loadCustomOrDefault()
         setupChannels()
         populateList()
 
@@ -117,6 +121,39 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+        }
+    }
+
+    private fun loadCustomOrDefault() {
+        val sharedPreferences = getSharedPreferences("cache", Context.MODE_PRIVATE)
+        val jsonList = sharedPreferences.getString("custom_list", null)
+        if (jsonList != null) {
+            val jsonArray = JSONArray(jsonList)
+            Channels.List.clear()
+            for (i in 0 until jsonArray.length()) {
+                val jsonObject = jsonArray.getJSONObject(i)
+                Channels.List.add(
+                    Channels.Companion.ListItem(
+                        number = jsonObject.getInt("number"),
+                        name = jsonObject.getString("name"),
+                        url = jsonObject.getString("url"),
+                        opts = jsonObject.getString("opts")
+                    )
+                )
+            }
+        } else {
+            val editor = sharedPreferences.edit()
+            val jsonArray = JSONArray()
+            for (item in Channels.List) {
+                val jsonObject = JSONObject()
+                jsonObject.put("number", item.number)
+                jsonObject.put("name", item.name)
+                jsonObject.put("url", item.url)
+                jsonObject.put("opts", item.opts)
+                jsonArray.put(jsonObject)
+            }
+            editor.putString("custom_list", jsonArray.toString())
+            editor.apply()
         }
     }
 
@@ -215,7 +252,7 @@ class MainActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_BACK -> {
                 if (!isBackPressed) {
                     isBackPressed = true
-                    looperHandler.postDelayed(longPressRunnable, backLongPressTimeout)
+                    looperHandler.postDelayed(backLongPressRunnable, longPressTimeout)
                 }
                 true
             }
@@ -236,7 +273,10 @@ class MainActivity : AppCompatActivity() {
                 true
             }
             KeyEvent.KEYCODE_MENU -> {
-                startActivity(Intent(Settings.ACTION_SETTINGS))
+                if (!isMenuPressed) {
+                    isMenuPressed = true
+                    looperHandler.postDelayed(menuLongPressRunnable, longPressTimeout)
+                }
                 true
             }
             else -> {
@@ -249,14 +289,30 @@ class MainActivity : AppCompatActivity() {
         return when (keyCode) {
             KeyEvent.KEYCODE_BACK -> {
                 if (isBackPressed) {
-                    looperHandler.removeCallbacks(longPressRunnable)
                     isBackPressed = false
-                    onBackButtonShortPressed()
+                    looperHandler.removeCallbacks(backLongPressRunnable)
+                    if (isBackLongPress) {
+                        isBackLongPress = false
+                    } else {
+                        onBackButtonShortPressed()
+                    }
+                }
+                true
+            }
+            KeyEvent.KEYCODE_MENU -> {
+                if (isMenuPressed) {
+                    isMenuPressed = false
+                    looperHandler.removeCallbacks(menuLongPressRunnable)
+                    if (isMenuLongPress) {
+                        isMenuLongPress = false
+                    } else {
+                        onMenuButtonShortPressed()
+                    }
                 }
                 true
             }
             else -> {
-                super.onKeyDown(keyCode, event)
+                super.onKeyUp(keyCode, event)
             }
         }
     }
@@ -293,14 +349,18 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private val longPressRunnable = Runnable {
+    private val backLongPressRunnable = Runnable {
         if (isBackPressed) {
-            onBackButtonLongPressed()
+            isBackLongPress = true
+            finishAffinity()
         }
     }
 
-    private fun onBackButtonLongPressed() {
-        finishAffinity()
+    private val menuLongPressRunnable = Runnable {
+        if (isMenuPressed) {
+            isMenuLongPress = true
+            startActivity(Intent(Settings.ACTION_SETTINGS))
+        }
     }
 
     private fun onBackButtonShortPressed() {
@@ -311,6 +371,11 @@ class MainActivity : AppCompatActivity() {
                 listView.setSelection(exoPlayer.currentMediaItemIndex)
             }
         }
+    }
+
+    private fun onMenuButtonShortPressed() {
+//        println("Botón de menu presionado y liberado rápidamente (adb shell input keyevent 82)")
+        startActivity(Intent(this@MainActivity, EditActivity::class.java))
     }
 
     private val hideRunnable = Runnable {
