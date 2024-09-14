@@ -25,6 +25,10 @@ class EditActivity : AppCompatActivity() {
 
     private val customList: MutableList<Channels.Companion.ListItem> = mutableListOf()
 
+    private enum class ChannelActionType { ADD, MOD, DEL }
+    private data class ChannelLastAction(var number: Int, var action: ChannelActionType)
+    private val channelLastActionList: MutableList<ChannelLastAction> = mutableListOf()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(layout.activity_edit)

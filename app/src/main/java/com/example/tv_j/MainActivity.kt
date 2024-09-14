@@ -45,13 +45,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var numberView: TextView
 
     private var lastChannelKeyPressed: Int = 0
+    private var lastChannelPosition: Int = 0
     private var isBackPressed = false
     private var isBackLongPress = false
     private var isMenuPressed = false
     private var isMenuLongPress = false
     private val longPressTimeout = 2000L
-    private val looperHandler = Handler(Looper.getMainLooper())
+    private val autoHideTimeout = 4000L
     private var loadedFromCache = false
+    private val looperHandler = Handler(Looper.getMainLooper())
 
 //    private val testUrl: String =
 //        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
@@ -164,7 +166,7 @@ class MainActivity : AppCompatActivity() {
         )
         if (loadListFromCache()) {
             Channels.List.forEach { listItem ->
-                mediaItems.add(genMediaItem(listItem.number.toString(), listItem.url))
+                mediaItems.add(genMediaItem(listItem.number.toString(), listItem.url, listItem.opts))
             }
             loadedFromCache = true
         } else {
@@ -177,7 +179,7 @@ class MainActivity : AppCompatActivity() {
                     iterate.set(listItem)
                 }
                 println("(${listItem.number.toString()}) ${listItem.name} - ${listItem.url}")
-                mediaItems.add(genMediaItem(listItem.number.toString(), listItem.url))
+                mediaItems.add(genMediaItem(listItem.number.toString(), listItem.url, listItem.opts))
             }
             saveListToCache()
             println("---------------------------------")
@@ -186,7 +188,14 @@ class MainActivity : AppCompatActivity() {
         println("SETEO LOS MediaItems")
     }
 
-    private fun genMediaItem(id: String, url: String): MediaItem {
+    private fun genMediaItem(id: String, url: String, opts: String?): MediaItem {
+        if (opts != null && !(opts.isEmpty())) {
+            if (JSONObject(opts).getBoolean("notM3u8")) {
+                return MediaItem.Builder()
+                    .setMediaId(id)
+                    .setUri(Uri.parse(url)).build()
+            }
+        }
         return MediaItem.Builder()
             .setMediaId(id)
             .setUri(Uri.parse(url))
@@ -226,10 +235,12 @@ class MainActivity : AppCompatActivity() {
         val adapter = CustomListAdapter(this, Channels.List)
         listView.adapter = adapter
         listView.onItemClickListener = AdapterView.OnItemClickListener { _, _, position, _ ->
-//            println("itemSelect: position = $position")
-            listView.visibility = View.GONE
-            if (position != exoPlayer.currentMediaItemIndex) {
+            val currentChannelPosition = exoPlayer.currentMediaItemIndex
+            if (position != currentChannelPosition) {
                 exoPlayer.seekToDefaultPosition(position)
+                lastChannelPosition = currentChannelPosition
+            } else {
+                listView.visibility = View.GONE
             }
             showAndHideNumberView(
                 (listView.getItemAtPosition(position) as Channels.Companion.ListItem).number)
@@ -241,12 +252,40 @@ class MainActivity : AppCompatActivity() {
             }
             override fun onNothingSelected(parent: AdapterView<*>) { }
         }
+        listView.setOnKeyListener { _, keyCode, event ->
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                val currentItemPosition = listView.selectedItemPosition
+                val lastListItemPosition = listView.count - 1
+                when (keyCode) {
+                    KeyEvent.KEYCODE_DPAD_CENTER -> {
+                        showAndHideListView()
+                    }
+                    KeyEvent.KEYCODE_DPAD_UP -> {
+                        showAndHideListView()
+                        lastChannelKeyPressed = -1
+                        if (currentItemPosition == 0) {
+                            listView.setSelection(lastListItemPosition)
+                            return@setOnKeyListener true
+                        }
+                    }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        showAndHideListView()
+                        lastChannelKeyPressed = 1
+                        if (currentItemPosition == lastListItemPosition) {
+                            listView.setSelection(0)
+                            return@setOnKeyListener true
+                        }
+                    }
+                }
+            }
+            false
+        }
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         return when (keyCode) {
             KeyEvent.KEYCODE_DPAD_CENTER -> {
-                if (listView.visibility != View.VISIBLE) listView.visibility = View.VISIBLE
+                if (listView.visibility != View.VISIBLE) showAndHideListView()
                 true
             }
             KeyEvent.KEYCODE_BACK -> {
@@ -318,6 +357,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun changeChannel(direction: Int) {
+        lastChannelPosition = exoPlayer.currentMediaItemIndex
         var changedChannelPosition: Int
         if (direction > 0) {
             if (exoPlayer.hasNextMediaItem()) {
@@ -370,6 +410,15 @@ class MainActivity : AppCompatActivity() {
             if (listView.selectedItemPosition != exoPlayer.currentMediaItemIndex) {
                 listView.setSelection(exoPlayer.currentMediaItemIndex)
             }
+        } else {
+            val currentChannelPosition = exoPlayer.currentMediaItemIndex
+            if (currentChannelPosition != lastChannelPosition) {
+                exoPlayer.seekToDefaultPosition(lastChannelPosition)
+                listView.setSelection(lastChannelPosition)
+                showAndHideNumberView(
+                    (listView.getItemAtPosition(lastChannelPosition) as Channels.Companion.ListItem).number)
+                lastChannelPosition = currentChannelPosition
+            }
         }
     }
 
@@ -378,15 +427,30 @@ class MainActivity : AppCompatActivity() {
         startActivity(Intent(this@MainActivity, EditActivity::class.java))
     }
 
-    private val hideRunnable = Runnable {
+    private val hideNumberViewRunnable = Runnable {
         numberView.visibility = View.GONE
     }
 
     private fun showAndHideNumberView(channelNumber: Int) {
-        looperHandler.removeCallbacks(hideRunnable)
+        looperHandler.removeCallbacks(hideNumberViewRunnable)
         numberView.text = channelNumber.toString()
         numberView.visibility = View.VISIBLE
-        looperHandler.postDelayed(hideRunnable, 5000L)
+        looperHandler.postDelayed(hideNumberViewRunnable, autoHideTimeout)
+    }
+
+    private val hideListViewRunnable = Runnable {
+        if (listView.visibility == View.VISIBLE) {
+            listView.visibility = View.GONE
+            if (listView.selectedItemPosition != exoPlayer.currentMediaItemIndex) {
+                listView.setSelection(exoPlayer.currentMediaItemIndex)
+            }
+        }
+    }
+
+    private fun showAndHideListView() {
+        looperHandler.removeCallbacks(hideListViewRunnable)
+        if (listView.visibility != View.VISIBLE) listView.visibility = View.VISIBLE
+        looperHandler.postDelayed(hideListViewRunnable, autoHideTimeout * 2)
     }
 
     private fun saveListToCache() {
