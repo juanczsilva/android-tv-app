@@ -11,8 +11,13 @@ import android.widget.ListView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.example.tv_j.R.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 
 class EditActivity : AppCompatActivity() {
 
@@ -26,8 +31,8 @@ class EditActivity : AppCompatActivity() {
     private val customList: MutableList<Channels.Companion.ListItem> = mutableListOf()
 
     private enum class ChannelActionType { ADD, MOD, DEL }
-    private data class ChannelLastAction(var number: Int, var action: ChannelActionType)
-    private val channelLastActionList: MutableList<ChannelLastAction> = mutableListOf()
+    private val channelLastActionMap: MutableMap<Int, ChannelActionType> = mutableMapOf()
+    private val urlsBackup: MutableMap<Int, String> = mutableMapOf()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,6 +64,7 @@ class EditActivity : AppCompatActivity() {
             )
             customList.sortBy { it.number }
             adapter.notifyDataSetChanged()
+            channelLastActionMap[number] = ChannelActionType.ADD
             alert("ADD: $number")
         }
         findViewById<Button>(id.btnMod).setOnClickListener { _ ->
@@ -68,6 +74,7 @@ class EditActivity : AppCompatActivity() {
             customList[index].url = urlField.text.toString()
             customList[index].opts = optsField.text.toString()
             adapter.notifyDataSetChanged()
+            channelLastActionMap[number] = ChannelActionType.MOD
             alert("MOD: $number")
         }
         findViewById<Button>(id.btnDel).setOnClickListener { _ ->
@@ -75,6 +82,7 @@ class EditActivity : AppCompatActivity() {
             val index: Int = customList.indexOfFirst { it.number == number }
             customList.removeAt(index)
             adapter.notifyDataSetChanged()
+            channelLastActionMap[number] = ChannelActionType.DEL
             alert("DEL: $number")
         }
         findViewById<Button>(id.btnOk).setOnClickListener { _ ->
@@ -97,6 +105,7 @@ class EditActivity : AppCompatActivity() {
                         opts = jsonObject.getString("opts")
                     )
                 )
+                urlsBackup[jsonObject.getInt("number")] = jsonObject.getString("url")
             }
         }
     }
@@ -114,26 +123,97 @@ class EditActivity : AppCompatActivity() {
         }
     }
 
-    private fun saveAndExit() {
+    private fun saveAndExit() = runBlocking {
         val sharedPreferences = getSharedPreferences("cache", Context.MODE_PRIVATE)
         val editor = sharedPreferences.edit()
-        val jsonArray = JSONArray()
+        val jsonArrayCustom = JSONArray()
         for (item in customList) {
             val jsonObject = JSONObject()
             jsonObject.put("number", item.number)
             jsonObject.put("name", item.name)
             jsonObject.put("url", item.url)
             jsonObject.put("opts", item.opts)
-            jsonArray.put(jsonObject)
+            jsonArrayCustom.put(jsonObject)
         }
-        editor.putString("custom_list", jsonArray.toString())
-        editor.remove("cached_list")
+        editor.putString("custom_list", jsonArrayCustom.toString())
+        channelLastActionMap.forEach { channelLastAction ->
+            if (channelLastAction.value == ChannelActionType.ADD
+                || channelLastAction.value == ChannelActionType.MOD) {
+                val customItem: Channels.Companion.ListItem? = customList.find { it.number == channelLastAction.key }
+                if (customItem != null) {
+                    if (Channels.List.any { it.number == channelLastAction.key }) {
+                        val index: Int = Channels.List.indexOfFirst { it.number == channelLastAction.key }
+                        Channels.List[index].name = customItem.name
+                        Channels.List[index].opts = customItem.opts
+                        if (customItem.url != urlsBackup[channelLastAction.key]) {
+                            Channels.List[index].url = fetchStreamUrl(customItem.url)
+                        }
+                    } else {
+                        Channels.List.add(
+                            Channels.Companion.ListItem(
+                                number = customItem.number,
+                                name = customItem.name,
+                                opts = customItem.opts,
+                                url = fetchStreamUrl(customItem.url)
+                            )
+                        )
+                    }
+                }
+            } else if (channelLastAction.value == ChannelActionType.DEL) {
+                if (Channels.List.any { it.number == channelLastAction.key }) {
+                    val index: Int = Channels.List.indexOfFirst { it.number == channelLastAction.key }
+                    Channels.List.removeAt(index)
+                }
+            }
+        }
+        Channels.List.sortBy { it.number }
+        val jsonArrayCache = JSONArray()
+        for (item in Channels.List) {
+            val jsonObject = JSONObject()
+            jsonObject.put("number", item.number)
+            jsonObject.put("name", item.name)
+            jsonObject.put("url", item.url)
+            jsonObject.put("opts", item.opts)
+            jsonArrayCache.put(jsonObject)
+        }
+        editor.putString("cached_list", jsonArrayCache.toString())
         editor.apply()
 
         val theIntent = Intent(this@EditActivity, MainActivity::class.java)
         theIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
         startActivity(theIntent)
         finish()
+    }
+
+    private suspend fun fetchStreamUrl(url: String): String {
+        if (url.contains("youtube") || url.contains("render-py-6goa")) {
+            return withContext(Dispatchers.IO) {
+                var stream = ""
+                try {
+                    val urlConnection = URL(url).openConnection() as HttpURLConnection
+                    urlConnection.requestMethod = "GET"
+                    val responseCode = urlConnection.responseCode
+                    if (responseCode == HttpURLConnection.HTTP_OK) {
+                        val inputStream = urlConnection.inputStream
+                        val data = inputStream.bufferedReader().use { it.readText() }
+                        val regex = (if (url.contains("youtube"))
+                            """(?<=hlsManifestUrl":")[^"]*\.m3u8""".toRegex()
+                        else
+                            """(?<=stream_url":")[^"]*\.m3u8""".toRegex())
+                        val match = regex.find(data)
+                        stream = match?.value ?: url
+                        inputStream.close()
+                    } else {
+                        println("Request failed with response code $responseCode")
+                    }
+                    urlConnection.disconnect()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                stream
+            }
+        }
+        return url
     }
 
     private fun alert(text: String) {

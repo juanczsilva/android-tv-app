@@ -26,6 +26,7 @@ import androidx.media3.common.Player
 import androidx.media3.datasource.HttpDataSource.HttpDataSourceException
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
 import com.example.tv_j.R.*
 import kotlinx.coroutines.Dispatchers
@@ -39,6 +40,7 @@ import java.net.URL
 class MainActivity : AppCompatActivity() {
 
     private lateinit var playerView: PlayerView
+    private lateinit var trackSelector: DefaultTrackSelector
     private lateinit var exoPlayer: ExoPlayer
     private lateinit var audioManager: AudioManager
     private lateinit var listView: ListView
@@ -68,7 +70,9 @@ class MainActivity : AppCompatActivity() {
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
         playerView = findViewById(id.playerView)
-        exoPlayer = ExoPlayer.Builder(this).build()
+        trackSelector = DefaultTrackSelector(this)
+        trackSelector.parameters = trackSelector.buildUponParameters().setMaxVideoSize(640, 360).build()
+        exoPlayer = ExoPlayer.Builder(this).setTrackSelector(trackSelector).build()
         exoPlayer.addListener(HandlePlayerEvents())
         exoPlayer.playWhenReady = true
         playerView.player = exoPlayer
