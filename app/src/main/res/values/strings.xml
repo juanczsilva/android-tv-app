@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">TV-J</string>
-    <string name="edit">EDIT</string>
+    <string name="edit">Edit</string>
     <string name="number">Number</string>
     <string name="name">Name</string>
     <string name="url">URL</string>
@@ -8,5 +8,4 @@
     <string name="add">ADD</string>
     <string name="mod">MOD</string>
     <string name="del">DEL</string>
-    <string name="ok">OK</string>
 </resources>

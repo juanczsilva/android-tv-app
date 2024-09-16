@@ -14,10 +14,13 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -45,6 +48,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var audioManager: AudioManager
     private lateinit var listView: ListView
     private lateinit var numberView: TextView
+    private lateinit var menuView: LinearLayout
 
     private var lastChannelKeyPressed: Int = 0
     private var lastChannelPosition: Int = 0
@@ -55,6 +59,7 @@ class MainActivity : AppCompatActivity() {
     private val longPressTimeout = 2000L
     private val autoHideTimeout = 4000L
     private var loadedFromCache = false
+    private var currentQuality: String = ""
     private val looperHandler = Handler(Looper.getMainLooper())
 
 //    private val testUrl: String =
@@ -69,18 +74,11 @@ class MainActivity : AppCompatActivity() {
 
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
-        playerView = findViewById(id.playerView)
-        trackSelector = DefaultTrackSelector(this)
-        trackSelector.parameters = trackSelector.buildUponParameters().setMaxVideoSize(640, 360).build()
-        exoPlayer = ExoPlayer.Builder(this).setTrackSelector(trackSelector).build()
-        exoPlayer.addListener(HandlePlayerEvents())
-        exoPlayer.playWhenReady = true
-        playerView.player = exoPlayer
-        playerView.useController = false
-
+        initPlayer()
         loadCustomOrDefault()
         setupChannels()
         populateList()
+        handleMenu()
 
         if (loadedFromCache) {
             Toast.makeText(this, "Cache...", Toast.LENGTH_LONG).show()
@@ -89,7 +87,6 @@ class MainActivity : AppCompatActivity() {
         numberView = findViewById(R.id.currentNumber)
 
         exoPlayer.prepare()
-
         println("EXO PREPARADO")
     }
 
@@ -128,6 +125,22 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun initPlayer() {
+        val (w, h) = getQualityByName(getCurrentCachedQuality())
+        playerView = findViewById(id.playerView)
+        trackSelector = DefaultTrackSelector(this)
+        if (w > 0 && h > 0) {
+            trackSelector.parameters = trackSelector.buildUponParameters()
+                .setMaxVideoSize(w, h)
+                .build()
+        }
+        exoPlayer = ExoPlayer.Builder(this).setTrackSelector(trackSelector).build()
+        exoPlayer.addListener(HandlePlayerEvents())
+        exoPlayer.playWhenReady = true
+        playerView.player = exoPlayer
+        playerView.useController = false
     }
 
     private fun loadCustomOrDefault() {
@@ -289,8 +302,11 @@ class MainActivity : AppCompatActivity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         return when (keyCode) {
             KeyEvent.KEYCODE_DPAD_CENTER -> {
-                if (listView.visibility != View.VISIBLE) showAndHideListView()
-                true
+                if (listView.visibility != View.VISIBLE && menuView.visibility != View.VISIBLE) {
+                    showAndHideListView()
+                    return@onKeyDown true
+                }
+                false
             }
             KeyEvent.KEYCODE_BACK -> {
                 if (!isBackPressed) {
@@ -300,12 +316,28 @@ class MainActivity : AppCompatActivity() {
                 true
             }
             KeyEvent.KEYCODE_DPAD_UP -> {
-                if (listView.visibility != View.VISIBLE) changeChannel(-1)
-                true
+                if (listView.visibility != View.VISIBLE && menuView.visibility != View.VISIBLE) {
+                    changeChannel(-1)
+                    return@onKeyDown true
+                } else if (menuView.visibility == View.VISIBLE) {
+                    if (findViewById<Button>(id.go_edit_button).hasFocus()) {
+                        findViewById<Button>(id.select_quality_button).requestFocus()
+                        return@onKeyDown true
+                    }
+                }
+                false
             }
             KeyEvent.KEYCODE_DPAD_DOWN -> {
-                if (listView.visibility != View.VISIBLE) changeChannel(1)
-                true
+                if (listView.visibility != View.VISIBLE && menuView.visibility != View.VISIBLE) {
+                    changeChannel(1)
+                    return@onKeyDown true
+                } else if (menuView.visibility == View.VISIBLE) {
+                    if (findViewById<Button>(id.select_quality_button).hasFocus()) {
+                        findViewById<Button>(id.go_edit_button).requestFocus()
+                        return@onKeyDown true
+                    }
+                }
+                false
             }
             KeyEvent.KEYCODE_DPAD_LEFT -> {
                 adjustVolume(-1)
@@ -409,7 +441,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun onBackButtonShortPressed() {
 //        println("Botón de volver atrás presionado y liberado rápidamente")
-        if (listView.visibility == View.VISIBLE) {
+        if (menuView.visibility == View.VISIBLE) {
+            menuView.visibility = View.GONE
+        } else if (listView.visibility == View.VISIBLE) {
             listView.visibility = View.GONE
             if (listView.selectedItemPosition != exoPlayer.currentMediaItemIndex) {
                 listView.setSelection(exoPlayer.currentMediaItemIndex)
@@ -428,7 +462,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun onMenuButtonShortPressed() {
 //        println("Botón de menu presionado y liberado rápidamente (adb shell input keyevent 82)")
-        startActivity(Intent(this@MainActivity, EditActivity::class.java))
+        if (menuView.visibility == View.VISIBLE) {
+            menuView.visibility = View.GONE
+        } else {
+            findViewById<Button>(id.go_edit_button).requestFocus()
+            menuView.visibility = View.VISIBLE
+        }
     }
 
     private val hideNumberViewRunnable = Runnable {
@@ -493,6 +532,70 @@ class MainActivity : AppCompatActivity() {
             ))
         }
         return true
+    }
+
+    private fun handleMenu() {
+        menuView = findViewById(id.right_menu)
+        findViewById<Button>(id.go_edit_button).setOnClickListener {
+            menuView.visibility = View.GONE
+            startActivity(Intent(this@MainActivity, EditActivity::class.java))
+        }
+        findViewById<Button>(id.select_quality_button).setOnClickListener {
+            val qualityAlertOptions = arrayOf("360p", "Auto")
+            val qualityAlertBuilder = AlertDialog.Builder(this, style.CustomAlertDialogTheme)
+            qualityAlertBuilder.setTitle("Quality:").setItems(qualityAlertOptions) { _, which ->
+                onQualityChange(qualityAlertOptions[which])
+            }
+            val qualityAlertDialog = qualityAlertBuilder.create()
+            val listView = qualityAlertDialog.listView
+            listView.setSelector(drawable.list_item_selector)
+            qualityAlertDialog.show()
+        }
+        findViewById<Button>(id.select_quality_button).text = "Quality: " + currentQuality
+    }
+
+    private fun getCurrentCachedQuality(): String? {
+        val sharedPreferences = getSharedPreferences("cache", Context.MODE_PRIVATE)
+        val cachedQuality = sharedPreferences.getString("cachedQuality", null)
+        return cachedQuality
+    }
+
+    private fun getQualityByName(qualityName: String?): Pair<Int, Int> {
+        var maxVideoWidth: Int = 0
+        var maxVideoHeight: Int = 0
+        if (qualityName != null && !qualityName.isEmpty()) {
+            when (qualityName) {
+                "360p" -> {
+                    maxVideoWidth = 640
+                    maxVideoHeight = 360
+                    currentQuality = "360p"
+                }
+                "Auto" -> {
+                    currentQuality = "Auto"
+                }
+            }
+        } else {
+            currentQuality = "Auto"
+        }
+        return Pair(maxVideoWidth, maxVideoHeight)
+    }
+
+    private fun onQualityChange(theNewQuality: String) {
+        var (w, h) = getQualityByName(theNewQuality)
+        if (w > 0 && h > 0) {
+            trackSelector.parameters = trackSelector.buildUponParameters()
+                .setMaxVideoSize(w, h)
+                .build()
+        } else {
+            trackSelector.parameters = trackSelector.buildUponParameters()
+                .clearVideoSizeConstraints()
+                .build()
+        }
+        val sharedPreferences = getSharedPreferences("cache", Context.MODE_PRIVATE)
+        val editor = sharedPreferences.edit()
+        editor.putString("cachedQuality", theNewQuality)
+        editor.apply()
+        findViewById<Button>(id.select_quality_button).text = "Quality: " + currentQuality
     }
 
 }
