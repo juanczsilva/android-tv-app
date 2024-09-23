@@ -13,7 +13,7 @@ class Channels {
             ListItem(12, "El Trece",
                 "https://live-01-02-eltrece.vodgc.net/eltrecetv/index.m3u8"),
             ListItem(13, "El Nueve",
-                "https://render-py-6goa.onrender.com/tw?ch=elnueve_ok&qu=480p"),
+                "https://pwn.sh/tools/streamapi.py?url=twitch.tv/elnueve_ok&quality=360p"),
             ListItem(14, "TN",
                 "https://www.youtube.com/todonoticias/live"),
             ListItem(15, "A24",

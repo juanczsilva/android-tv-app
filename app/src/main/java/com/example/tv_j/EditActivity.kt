@@ -186,7 +186,7 @@ class EditActivity : AppCompatActivity() {
     }
 
     private suspend fun fetchStreamUrl(url: String): String {
-        if (url.contains("youtube") || url.contains("render-py-6goa")) {
+        if (url.contains("youtube") || url.contains("twitch")) {
             return withContext(Dispatchers.IO) {
                 var stream = ""
                 try {
@@ -196,12 +196,21 @@ class EditActivity : AppCompatActivity() {
                     if (responseCode == HttpURLConnection.HTTP_OK) {
                         val inputStream = urlConnection.inputStream
                         val data = inputStream.bufferedReader().use { it.readText() }
-                        val regex = (if (url.contains("youtube"))
-                            """(?<=hlsManifestUrl":")[^"]*\.m3u8""".toRegex()
-                        else
-                            """(?<=stream_url":")[^"]*\.m3u8""".toRegex())
-                        val match = regex.find(data)
-                        stream = match?.value ?: url
+
+                        if (url.contains("youtube")) {
+                            val regex = """(?<=hlsManifestUrl":")[^"]*\.m3u8""".toRegex()
+                            val match = regex.find(data)
+                            stream = match?.value ?: url
+                        } else {
+                            val jsonObject = JSONObject(data)
+                            val urlsObject = jsonObject.getJSONObject("urls")
+                            var lastKey: String? = null
+                            val keys = urlsObject.keys()
+                            while (keys.hasNext()) { lastKey = keys.next() }
+                            val lastValue = lastKey?.let { urlsObject.getString(it) }
+                            stream = lastValue ?: url
+                        }
+
                         inputStream.close()
                     } else {
                         println("Request failed with response code $responseCode")
