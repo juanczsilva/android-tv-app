@@ -119,7 +119,7 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent"
-        android:text="@android:string/ok"
+        android:text="@string/ok"
         android:id="@+id/btnOk"
         android:background="@drawable/list_item_selector"
         android:textColor="@android:color/white"

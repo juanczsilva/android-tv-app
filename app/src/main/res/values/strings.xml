@@ -8,4 +8,6 @@
     <string name="add">ADD</string>
     <string name="mod">MOD</string>
     <string name="del">DEL</string>
+    <string name="ok">OK</string>
+    <string name="control">Control</string>
 </resources>

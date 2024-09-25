@@ -18,6 +18,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.ProgressBar
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -49,9 +50,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var listView: ListView
     private lateinit var numberView: TextView
     private lateinit var menuView: LinearLayout
+    private lateinit var volumeView: LinearLayout
 
     private var lastChannelKeyPressed: Int = 0
     private var lastChannelPosition: Int = 0
+    private var isDpadCenterPressed = false
+    private var isDpadCenterLongPress = false
     private var isBackPressed = false
     private var isBackLongPress = false
     private var isMenuPressed = false
@@ -85,6 +89,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         numberView = findViewById(R.id.currentNumber)
+        volumeView = findViewById(R.id.volume_view)
 
         exoPlayer.prepare()
         println("EXO PREPARADO")
@@ -312,7 +317,10 @@ class MainActivity : AppCompatActivity() {
         return when (keyCode) {
             KeyEvent.KEYCODE_DPAD_CENTER -> {
                 if (listView.visibility != View.VISIBLE && menuView.visibility != View.VISIBLE) {
-                    showAndHideListView()
+                    if (!isDpadCenterPressed) {
+                        isDpadCenterPressed = true
+                        looperHandler.postDelayed(dpadCenterLongPressRunnable, longPressTimeout)
+                    }
                     return@onKeyDown true
                 }
                 false
@@ -371,6 +379,18 @@ class MainActivity : AppCompatActivity() {
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
         return when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_CENTER -> {
+                if (isDpadCenterPressed) {
+                    isDpadCenterPressed = false
+                    looperHandler.removeCallbacks(dpadCenterLongPressRunnable)
+                    if (isDpadCenterLongPress) {
+                        isDpadCenterLongPress = false
+                    } else {
+                        onDpadCenterButtonShortPressed()
+                    }
+                }
+                true
+            }
             KeyEvent.KEYCODE_BACK -> {
                 if (isBackPressed) {
                     isBackPressed = false
@@ -428,10 +448,32 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun adjustVolume(direction: Int) {
-        audioManager.adjustVolume(
-            if (direction > 0) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER,
-            AudioManager.FLAG_SHOW_UI
-        )
+        if (findViewById<Switch>(id.control_switch).isChecked) {
+            showAndHideVolumeView()
+            if (direction > 0) {
+                if (exoPlayer.volume < 1.00f) {
+                    val theNewVolume = (exoPlayer.volume + 0.01f)
+                    setCustomVolume(theNewVolume)
+                }
+            } else {
+                if (exoPlayer.volume > 0.00f) {
+                    val theNewVolume = (exoPlayer.volume - 0.01f)
+                    setCustomVolume(theNewVolume)
+                }
+            }
+        } else {
+            audioManager.adjustVolume(
+                if (direction > 0) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER,
+                AudioManager.FLAG_SHOW_UI
+            )
+        }
+    }
+
+    private val dpadCenterLongPressRunnable = Runnable {
+        if (isDpadCenterPressed) {
+            isDpadCenterLongPress = true
+            onMenuButtonShortPressed()
+        }
     }
 
     private val backLongPressRunnable = Runnable {
@@ -446,6 +488,10 @@ class MainActivity : AppCompatActivity() {
             isMenuLongPress = true
             startActivity(Intent(Settings.ACTION_SETTINGS))
         }
+    }
+
+    private fun onDpadCenterButtonShortPressed() {
+        showAndHideListView()
     }
 
     private fun onBackButtonShortPressed() {
@@ -505,6 +551,18 @@ class MainActivity : AppCompatActivity() {
         looperHandler.postDelayed(hideListViewRunnable, autoHideTimeout * 2)
     }
 
+    private val hideVolumeViewRunnable = Runnable {
+        if (volumeView.visibility == View.VISIBLE) {
+            volumeView.visibility = View.GONE
+        }
+    }
+
+    private fun showAndHideVolumeView() {
+        looperHandler.removeCallbacks(hideVolumeViewRunnable)
+        if (volumeView.visibility != View.VISIBLE) volumeView.visibility = View.VISIBLE
+        looperHandler.postDelayed(hideVolumeViewRunnable, autoHideTimeout)
+    }
+
     private fun saveListToCache() {
         val sharedPreferences = getSharedPreferences("cache", Context.MODE_PRIVATE)
         val editor = sharedPreferences.edit()
@@ -548,6 +606,13 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(id.go_edit_button).setOnClickListener {
             menuView.visibility = View.GONE
             startActivity(Intent(this@MainActivity, EditActivity::class.java))
+        }
+        val isCustomVolume = getCurrentControlSwitch()
+        if (isCustomVolume) { setCustomVolume(0.50f) }
+        findViewById<Switch>(id.control_switch).isChecked = isCustomVolume
+        findViewById<Switch>(id.control_switch).setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) { setCustomVolume(0.50f) } else { setCustomVolume(1.00f) }
+            onControlSwitchChange(isChecked)
         }
         findViewById<Button>(id.select_quality_button).setOnClickListener {
             val qualityAlertOptions = arrayOf("360p", "Auto")
@@ -605,6 +670,25 @@ class MainActivity : AppCompatActivity() {
         editor.putString("cachedQuality", theNewQuality)
         editor.apply()
         findViewById<Button>(id.select_quality_button).text = "Quality: " + currentQuality
+    }
+
+    private fun getCurrentControlSwitch(): Boolean {
+        val sharedPreferences = getSharedPreferences("cache", Context.MODE_PRIVATE)
+        val controlSwitch = sharedPreferences.getBoolean("controlSwitch", false)
+        return controlSwitch
+    }
+
+    private fun onControlSwitchChange(value: Boolean) {
+        val sharedPreferences = getSharedPreferences("cache", Context.MODE_PRIVATE)
+        val editor = sharedPreferences.edit()
+        editor.putBoolean("controlSwitch", value)
+        editor.apply()
+    }
+
+    private fun setCustomVolume(value: Float) {
+        exoPlayer.volume = value
+        findViewById<TextView>(id.volume_percent).text = (value * 100).toInt().toString()
+        findViewById<ProgressBar>(id.volume_bar).progress = (value * 100).toInt()
     }
 
 }

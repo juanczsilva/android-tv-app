@@ -92,6 +92,19 @@
             android:textAlignment="textStart"
             android:textColor="@android:color/white"
             android:background="@drawable/list_item_selector" />
+        <Switch
+            android:id="@+id/control_switch"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="@string/control"
+            android:textAllCaps="false"
+            android:textSize="18sp"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:textAlignment="textStart"
+            android:textColor="@android:color/white"
+            android:background="@drawable/list_item_selector"
+            android:theme="@style/CustomControlsTheme" />
         <Button
             android:id="@+id/select_quality_button"
             android:layout_width="match_parent"
@@ -104,6 +117,43 @@
             android:textAlignment="textStart"
             android:textColor="@android:color/white"
             android:background="@drawable/list_item_selector" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/volume_view"
+        android:layout_width="250dp"
+        android:layout_height="wrap_content"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginBottom="50dp"
+        android:background="#cc000000"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:visibility="invisible">
+        <TextView
+            android:id="@+id/volume_percent"
+            android:layout_width="50dp"
+            android:layout_height="wrap_content"
+            android:textColor="@android:color/white"
+            android:paddingStart="10dp"
+            android:paddingEnd="5dp"
+            android:textAlignment="center"
+            android:textStyle="bold"
+            android:textSize="20sp" />
+        <ProgressBar
+            android:id="@+id/volume_bar"
+            style="@android:style/Widget.ProgressBar.Horizontal"
+            android:layout_width="200dp"
+            android:layout_height="10dp"
+            android:paddingStart="5dp"
+            android:paddingEnd="10dp"
+            android:textIsSelectable="false"
+            android:clickable="false"
+            android:contextClickable="false"
+            android:focusable="false"
+            android:progressTint="@android:color/holo_green_dark"
+            android:progress="50" />
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
