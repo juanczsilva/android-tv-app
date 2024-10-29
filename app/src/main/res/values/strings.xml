@@ -9,5 +9,13 @@
     <string name="mod">MOD</string>
     <string name="del">DEL</string>
     <string name="ok">OK</string>
-    <string name="control">Control</string>
+    <string name="control">Volume control</string>
+    <string name="player">Player</string>
+    <string name="channels">Channels</string>
+    <string name="import_export">Import/Export</string>
+    <string name="rebuild_cache">Rebuild cache</string>
+    <string name="clear_all">Clear all</string>
+    <string name="channels_data">Channels data:</string>
+    <string name="import_current">Import current channels data</string>
+    <string name="export_file">Export channels data to file</string>
 </resources>

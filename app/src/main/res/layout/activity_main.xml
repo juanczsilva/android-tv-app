@@ -80,11 +80,26 @@
             android:clickable="false"
             android:contextClickable="false"
             android:focusable="false" />
-        <Button
-            android:id="@+id/go_edit_button"
+
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/edit"
+            android:text="@string/player"
+            android:textSize="12sp"
+            android:textColor="@android:color/white"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:paddingBottom="0dp"
+            android:paddingTop="14dp"
+            android:textIsSelectable="false"
+            android:clickable="false"
+            android:contextClickable="false"
+            android:focusable="false" />
+        <Button
+            android:id="@+id/select_quality_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@android:string/unknownName"
             android:textAllCaps="false"
             android:textSize="18sp"
             android:paddingStart="14dp"
@@ -105,11 +120,26 @@
             android:textColor="@android:color/white"
             android:background="@drawable/list_item_selector"
             android:theme="@style/CustomControlsTheme" />
-        <Button
-            android:id="@+id/select_quality_button"
+
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@android:string/unknownName"
+            android:text="@string/channels"
+            android:textSize="12sp"
+            android:textColor="@android:color/white"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:paddingBottom="0dp"
+            android:paddingTop="14dp"
+            android:textIsSelectable="false"
+            android:clickable="false"
+            android:contextClickable="false"
+            android:focusable="false" />
+        <Button
+            android:id="@+id/go_edit_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/edit"
             android:textAllCaps="false"
             android:textSize="18sp"
             android:paddingStart="14dp"
@@ -117,6 +147,43 @@
             android:textAlignment="textStart"
             android:textColor="@android:color/white"
             android:background="@drawable/list_item_selector" />
+        <Button
+            android:id="@+id/import_export_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/import_export"
+            android:textAllCaps="false"
+            android:textSize="18sp"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:textAlignment="textStart"
+            android:textColor="@android:color/white"
+            android:background="@drawable/list_item_selector" />
+        <Button
+            android:id="@+id/rebuild_cache_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/rebuild_cache"
+            android:textAllCaps="false"
+            android:textSize="18sp"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:textAlignment="textStart"
+            android:textColor="@android:color/white"
+            android:background="@drawable/list_item_selector" />
+        <Button
+            android:id="@+id/clear_all_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/clear_all"
+            android:textAllCaps="false"
+            android:textSize="18sp"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:textAlignment="textStart"
+            android:textColor="@android:color/white"
+            android:background="@drawable/list_item_selector" />
+
     </LinearLayout>
 
     <LinearLayout

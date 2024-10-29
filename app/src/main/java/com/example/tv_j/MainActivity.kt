@@ -15,6 +15,7 @@ import android.view.WindowManager
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.ProgressBar
@@ -52,7 +53,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var menuView: LinearLayout
     private lateinit var volumeView: LinearLayout
 
-    private var lastChannelKeyPressed: Int = 0
+    private var lastChannelKeyPressed: Int = 1
     private var lastChannelPosition: Int = 0
     private var isDpadCenterPressed = false
     private var isDpadCenterLongPress = false
@@ -64,6 +65,7 @@ class MainActivity : AppCompatActivity() {
     private val autoHideTimeout = 4000L
     private var loadedFromCache = false
     private var currentQuality: String = ""
+    private var currentVolume: Float = 0.50f
     private val looperHandler = Handler(Looper.getMainLooper())
 
 //    private val testUrl: String =
@@ -337,8 +339,8 @@ class MainActivity : AppCompatActivity() {
                     changeChannel(-1)
                     return@onKeyDown true
                 } else if (menuView.visibility == View.VISIBLE) {
-                    if (findViewById<Button>(id.go_edit_button).hasFocus()) {
-                        findViewById<Button>(id.select_quality_button).requestFocus()
+                    if (findViewById<Button>(id.select_quality_button).hasFocus()) {
+                        findViewById<Button>(id.clear_all_button).requestFocus()
                         return@onKeyDown true
                     }
                 }
@@ -349,8 +351,8 @@ class MainActivity : AppCompatActivity() {
                     changeChannel(1)
                     return@onKeyDown true
                 } else if (menuView.visibility == View.VISIBLE) {
-                    if (findViewById<Button>(id.select_quality_button).hasFocus()) {
-                        findViewById<Button>(id.go_edit_button).requestFocus()
+                    if (findViewById<Button>(id.clear_all_button).hasFocus()) {
+                        findViewById<Button>(id.select_quality_button).requestFocus()
                         return@onKeyDown true
                     }
                 }
@@ -453,11 +455,13 @@ class MainActivity : AppCompatActivity() {
             if (direction > 0) {
                 if (exoPlayer.volume < 1.00f) {
                     val theNewVolume = (exoPlayer.volume + 0.01f)
+                    currentVolume = theNewVolume
                     setCustomVolume(theNewVolume)
                 }
             } else {
                 if (exoPlayer.volume > 0.00f) {
                     val theNewVolume = (exoPlayer.volume - 0.01f)
+                    currentVolume = theNewVolume
                     setCustomVolume(theNewVolume)
                 }
             }
@@ -520,7 +524,7 @@ class MainActivity : AppCompatActivity() {
         if (menuView.visibility == View.VISIBLE) {
             menuView.visibility = View.GONE
         } else {
-            findViewById<Button>(id.go_edit_button).requestFocus()
+            findViewById<Button>(id.select_quality_button).requestFocus()
             menuView.visibility = View.VISIBLE
         }
     }
@@ -554,6 +558,7 @@ class MainActivity : AppCompatActivity() {
     private val hideVolumeViewRunnable = Runnable {
         if (volumeView.visibility == View.VISIBLE) {
             volumeView.visibility = View.GONE
+            onPlayerVolumeChange(currentVolume)
         }
     }
 
@@ -608,24 +613,96 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this@MainActivity, EditActivity::class.java))
         }
         val isCustomVolume = getCurrentControlSwitch()
-        if (isCustomVolume) { setCustomVolume(0.50f) }
+        if (isCustomVolume) { setCustomVolume(currentVolume) }
         findViewById<Switch>(id.control_switch).isChecked = isCustomVolume
         findViewById<Switch>(id.control_switch).setOnCheckedChangeListener { _, isChecked ->
-            if (isChecked) { setCustomVolume(0.50f) } else { setCustomVolume(1.00f) }
+            if (isChecked) { setCustomVolume(currentVolume) } else { exoPlayer.volume = 1.00f }
             onControlSwitchChange(isChecked)
         }
         findViewById<Button>(id.select_quality_button).setOnClickListener {
-            val qualityAlertOptions = arrayOf("360p", "Auto")
+            val qualityAlertOptions = arrayOf("1080p", "720p", "480p", "360p", "240p", "144p", "Auto")
+            val preselectedOption = qualityAlertOptions.indexOf(currentQuality).takeIf { it >= 0 } ?: 0
             val qualityAlertBuilder = AlertDialog.Builder(this, style.CustomAlertDialogTheme)
             qualityAlertBuilder.setTitle("Quality:").setItems(qualityAlertOptions) { _, which ->
                 onQualityChange(qualityAlertOptions[which])
             }
             val qualityAlertDialog = qualityAlertBuilder.create()
-            val listView = qualityAlertDialog.listView
-            listView.setSelector(drawable.list_item_selector)
+            qualityAlertDialog.setOnShowListener {
+                val qualityAlertDialogListView = qualityAlertDialog.listView
+                qualityAlertDialogListView.setItemChecked(preselectedOption, true)
+                qualityAlertDialogListView.setSelection(preselectedOption)
+                qualityAlertDialogListView.setSelector(drawable.list_item_selector)
+                qualityAlertDialogListView.setOnKeyListener { _, keyCode, event ->
+                    if (event.action == KeyEvent.ACTION_DOWN) {
+                        val currentItemPosition = qualityAlertDialogListView.selectedItemPosition
+                        when (keyCode) {
+                            KeyEvent.KEYCODE_DPAD_UP -> {
+                                if (currentItemPosition == 0) {
+                                    qualityAlertDialogListView.setItemChecked(qualityAlertOptions.size - 1, true)
+                                    qualityAlertDialogListView.setSelection(qualityAlertOptions.size - 1)
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                if (currentItemPosition == qualityAlertOptions.size - 1) {
+                                    qualityAlertDialogListView.setItemChecked(0, true)
+                                    qualityAlertDialogListView.setSelection(0)
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                            else -> false
+                        }
+                    } else {
+                        false
+                    }
+                }
+            }
             qualityAlertDialog.show()
         }
         findViewById<Button>(id.select_quality_button).text = "Quality: " + currentQuality
+
+        findViewById<Button>(id.import_export_button).setOnClickListener {
+            val impExpDialogView = layoutInflater.inflate(R.layout.dialog_custom, null)
+            val impExpDialogText = impExpDialogView.findViewById<EditText>(R.id.channels_data)
+            val impExpDialogImpBtn = impExpDialogView.findViewById<Button>(R.id.import_button)
+            val impExpDialogExpBtn = impExpDialogView.findViewById<Button>(R.id.export_button)
+            val impExpAlertBuilder = AlertDialog.Builder(this,
+                style.CustomAlertDialogTheme).setView(impExpDialogView)
+            val impExpAlertDialog = impExpAlertBuilder.create()
+            impExpAlertDialog.setOnShowListener {
+                val sharedPreferences = getSharedPreferences("cache", Context.MODE_PRIVATE)
+                val jsonList = sharedPreferences.getString("custom_list", null)
+                if (jsonList != null) {
+                    val jsonArray = JSONArray(jsonList)
+                    impExpDialogText.setText(jsonArray.toString(2))
+                }
+                impExpDialogImpBtn.setOnClickListener {
+                    // verificar si el texto se parsea a lista de canales
+                    // si no parsea mostrar error y frenar
+                    // si parsea entonces borrar cached list y actualizar la custom list
+                    // reiniciar el main activity
+                }
+                impExpDialogExpBtn.setOnClickListener {
+                    // guardar el texto en un archivo txt
+                    // mostrar alerta de ok o error
+                }
+            }
+            impExpAlertDialog.show()
+        }
+
+        findViewById<Button>(id.rebuild_cache_button).setOnClickListener {
+            // borrar cached list
+            // reiniciar el main activity
+        }
+        findViewById<Button>(id.clear_all_button).setOnClickListener {
+            // borrar custom list
+            // borrar cached list
+            // reiniciar el main activity
+        }
     }
 
     private fun getCurrentCachedQuality(): String? {
@@ -639,10 +716,35 @@ class MainActivity : AppCompatActivity() {
         var maxVideoHeight: Int = 0
         if (qualityName != null && !qualityName.isEmpty()) {
             when (qualityName) {
+                "1080p" -> {
+                    maxVideoWidth = 1920
+                    maxVideoHeight = 1080
+                    currentQuality = "1080p"
+                }
+                "720p" -> {
+                    maxVideoWidth = 1280
+                    maxVideoHeight = 720
+                    currentQuality = "720p"
+                }
+                "480p" -> {
+                    maxVideoWidth = 854
+                    maxVideoHeight = 480
+                    currentQuality = "480p"
+                }
                 "360p" -> {
                     maxVideoWidth = 640
                     maxVideoHeight = 360
                     currentQuality = "360p"
+                }
+                "240p" -> {
+                    maxVideoWidth = 426
+                    maxVideoHeight = 240
+                    currentQuality = "240p"
+                }
+                "144p" -> {
+                    maxVideoWidth = 256
+                    maxVideoHeight = 144
+                    currentQuality = "144p"
                 }
                 "Auto" -> {
                     currentQuality = "Auto"
@@ -675,6 +777,7 @@ class MainActivity : AppCompatActivity() {
     private fun getCurrentControlSwitch(): Boolean {
         val sharedPreferences = getSharedPreferences("cache", Context.MODE_PRIVATE)
         val controlSwitch = sharedPreferences.getBoolean("controlSwitch", false)
+        currentVolume = sharedPreferences.getFloat("cachedVolume", 0.50f)
         return controlSwitch
     }
 
@@ -682,6 +785,13 @@ class MainActivity : AppCompatActivity() {
         val sharedPreferences = getSharedPreferences("cache", Context.MODE_PRIVATE)
         val editor = sharedPreferences.edit()
         editor.putBoolean("controlSwitch", value)
+        editor.apply()
+    }
+
+    private fun onPlayerVolumeChange(value: Float) {
+        val sharedPreferences = getSharedPreferences("cache", Context.MODE_PRIVATE)
+        val editor = sharedPreferences.edit()
+        editor.putFloat("cachedVolume", value)
         editor.apply()
     }
 

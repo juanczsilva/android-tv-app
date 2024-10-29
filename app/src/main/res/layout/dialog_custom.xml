@@ -1,0 +1,54 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+    <TextView
+        android:id="@+id/dialogTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/channels_data"
+        android:textColor="@android:color/white"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:fontFamily="sans-serif-condensed-light"
+        android:gravity="start"
+        android:paddingBottom="8dp" />
+    <EditText
+        android:id="@+id/channels_data"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@android:color/darker_gray"
+        android:inputType="textMultiLine"
+        android:minHeight="265dp"
+        android:maxHeight="265dp"
+        android:gravity="top|start"
+        android:padding="8dp" />
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:layout_marginTop="16dp">
+        <Button
+            android:id="@+id/import_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/import_current"
+            android:padding="8dp"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/list_item_selector"
+            android:textColor="@android:color/white"
+            style="?android:attr/buttonBarButtonStyle" />
+        <Button
+            android:id="@+id/export_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/export_file"
+            android:padding="8dp"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/list_item_selector"
+            android:textColor="@android:color/white"
+            style="?android:attr/buttonBarButtonStyle" />
+    </LinearLayout>
+</LinearLayout>
