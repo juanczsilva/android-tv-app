@@ -1,13 +1,16 @@
 package com.example.tv_j
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Drawable
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.provider.MediaStore
 import android.provider.Settings
 import android.view.KeyEvent
 import android.view.View
@@ -87,7 +90,7 @@ class MainActivity : AppCompatActivity() {
         handleMenu()
 
         if (loadedFromCache) {
-            Toast.makeText(this, "Cache...", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Loading from cache...", Toast.LENGTH_LONG).show()
         }
 
         numberView = findViewById(R.id.currentNumber)
@@ -608,10 +611,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleMenu() {
         menuView = findViewById(id.right_menu)
+
         findViewById<Button>(id.go_edit_button).setOnClickListener {
             menuView.visibility = View.GONE
             startActivity(Intent(this@MainActivity, EditActivity::class.java))
         }
+
         val isCustomVolume = getCurrentControlSwitch()
         if (isCustomVolume) { setCustomVolume(currentVolume) }
         findViewById<Switch>(id.control_switch).isChecked = isCustomVolume
@@ -619,6 +624,7 @@ class MainActivity : AppCompatActivity() {
             if (isChecked) { setCustomVolume(currentVolume) } else { exoPlayer.volume = 1.00f }
             onControlSwitchChange(isChecked)
         }
+
         findViewById<Button>(id.select_quality_button).setOnClickListener {
             val qualityAlertOptions = arrayOf("1080p", "720p", "480p", "360p", "240p", "144p", "Auto")
             val preselectedOption = qualityAlertOptions.indexOf(currentQuality).takeIf { it >= 0 } ?: 0
@@ -681,27 +687,63 @@ class MainActivity : AppCompatActivity() {
                     impExpDialogText.setText(jsonArray.toString(2))
                 }
                 impExpDialogImpBtn.setOnClickListener {
-                    // verificar si el texto se parsea a lista de canales
-                    // si no parsea mostrar error y frenar
-                    // si parsea entonces borrar cached list y actualizar la custom list
-                    // reiniciar el main activity
+                    val currentChannelsData = impExpDialogText.text.toString()
+                    val jsonArray = try { JSONArray(currentChannelsData) } catch (e: Exception) { null }
+                    if (jsonArray != null) {
+                        if (jsonArray.length() > 0) {
+                            var jsonArrayHasError = false
+                            for (i in 0 until jsonArray.length()) {
+                                val jsonObject = jsonArray.getJSONObject(i)
+                                val isValidNumber = (jsonObject.has("number") && jsonObject.getInt("number") >= 0)
+                                val isValidName = (jsonObject.has("name") && jsonObject.getString("name").isNotEmpty())
+                                val isValidUrl = (jsonObject.has("url") && jsonObject.getString("url").isNotEmpty())
+                                if (!isValidNumber || !isValidName || !isValidUrl) jsonArrayHasError = true
+                            }
+                            if (!jsonArrayHasError) {
+                                clearCachedList()
+                                val editor = sharedPreferences.edit()
+                                editor.putString("custom_list", jsonArray.toString())
+                                editor.apply()
+                                restartApp()
+                            } else {
+                                Toast.makeText(this@MainActivity, "Error: data error", Toast.LENGTH_LONG).show()
+                            }
+                        } else {
+                            Toast.makeText(this@MainActivity, "Error: no data", Toast.LENGTH_LONG).show()
+                        }
+                    } else {
+                        Toast.makeText(this@MainActivity, "Error: format error", Toast.LENGTH_LONG).show()
+                    }
                 }
                 impExpDialogExpBtn.setOnClickListener {
-                    // guardar el texto en un archivo txt
-                    // mostrar alerta de ok o error
+                    val currentChannelsData = impExpDialogText.text.toString()
+                    val fileName = "TV-J_ChannelsData.txt"
+                    val contentValues = ContentValues().apply {
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                        put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+                        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS)
+                    }
+                    val uri = contentResolver.insert(MediaStore.Files.getContentUri("external"), contentValues)
+                    uri?.let {
+                        contentResolver.openOutputStream(it)?.use { outputStream ->
+                            outputStream.write(currentChannelsData.toByteArray())
+                            Toast.makeText(this@MainActivity, "File saved", Toast.LENGTH_LONG).show()
+                        } ?: Toast.makeText(this@MainActivity, "Error: file not saved", Toast.LENGTH_LONG).show()
+                    } ?: Toast.makeText(this@MainActivity, "Error: file not saved", Toast.LENGTH_LONG).show()
                 }
             }
             impExpAlertDialog.show()
         }
 
         findViewById<Button>(id.rebuild_cache_button).setOnClickListener {
-            // borrar cached list
-            // reiniciar el main activity
+            clearCachedList()
+            restartApp()
         }
+
         findViewById<Button>(id.clear_all_button).setOnClickListener {
-            // borrar custom list
-            // borrar cached list
-            // reiniciar el main activity
+            clearCustomList()
+            clearCachedList()
+            restartApp()
         }
     }
 
@@ -799,6 +841,28 @@ class MainActivity : AppCompatActivity() {
         exoPlayer.volume = value
         findViewById<TextView>(id.volume_percent).text = (value * 100).toInt().toString()
         findViewById<ProgressBar>(id.volume_bar).progress = (value * 100).toInt()
+    }
+
+    private fun restartApp() {
+        Channels.reset()
+        val intent = Intent(this, MainActivity::class.java)
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(intent)
+        finish()
+    }
+
+    private fun clearCachedList() {
+        val sharedPreferences = getSharedPreferences("cache", Context.MODE_PRIVATE)
+        val editor = sharedPreferences.edit()
+        editor.remove("cached_list")
+        editor.apply()
+    }
+
+    private fun clearCustomList() {
+        val sharedPreferences = getSharedPreferences("cache", Context.MODE_PRIVATE)
+        val editor = sharedPreferences.edit()
+        editor.remove("custom_list")
+        editor.apply()
     }
 
 }
