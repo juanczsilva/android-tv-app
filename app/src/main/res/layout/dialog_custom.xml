@@ -36,7 +36,7 @@
             android:layout_height="wrap_content"
             android:text="@string/import_current"
             android:padding="8dp"
-            android:layout_marginEnd="6dp"
+            android:layout_marginEnd="4dp"
             android:background="@drawable/list_item_selector"
             android:textColor="@android:color/white"
             style="?android:attr/buttonBarButtonStyle" />
@@ -46,7 +46,7 @@
             android:layout_height="wrap_content"
             android:text="@string/export_file"
             android:padding="8dp"
-            android:layout_marginStart="6dp"
+            android:layout_marginStart="4dp"
             android:background="@drawable/list_item_selector"
             android:textColor="@android:color/white"
             style="?android:attr/buttonBarButtonStyle" />

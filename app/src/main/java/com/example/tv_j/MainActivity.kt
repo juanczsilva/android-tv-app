@@ -3,9 +3,11 @@ package com.example.tv_j
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.media.AudioManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
@@ -42,6 +44,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -69,6 +72,8 @@ class MainActivity : AppCompatActivity() {
     private var loadedFromCache = false
     private var currentQuality: String = ""
     private var currentVolume: Float = 0.50f
+    private val REQUEST_CODE_WRITE_EXTERNAL_STORAGE = 1
+    private var exportData: String = ""
     private val looperHandler = Handler(Looper.getMainLooper())
 
 //    private val testUrl: String =
@@ -716,20 +721,18 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 impExpDialogExpBtn.setOnClickListener {
-                    val currentChannelsData = impExpDialogText.text.toString()
-                    val fileName = "TV-J_ChannelsData.txt"
-                    val contentValues = ContentValues().apply {
-                        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                        put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
-                        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS)
+                    exportData = impExpDialogText.text.toString()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        // Para Android 10 y versiones posteriores
+                        saveFileToExternalStorageNew()
+                    } else {
+                        // Para Android 9 y versiones anteriores
+                        if (checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                            requestPermissions(arrayOf(android.Manifest.permission.WRITE_EXTERNAL_STORAGE), REQUEST_CODE_WRITE_EXTERNAL_STORAGE)
+                        } else {
+                            saveFileToExternalStorageOld()
+                        }
                     }
-                    val uri = contentResolver.insert(MediaStore.Files.getContentUri("external"), contentValues)
-                    uri?.let {
-                        contentResolver.openOutputStream(it)?.use { outputStream ->
-                            outputStream.write(currentChannelsData.toByteArray())
-                            Toast.makeText(this@MainActivity, "File saved", Toast.LENGTH_LONG).show()
-                        } ?: Toast.makeText(this@MainActivity, "Error: file not saved", Toast.LENGTH_LONG).show()
-                    } ?: Toast.makeText(this@MainActivity, "Error: file not saved", Toast.LENGTH_LONG).show()
                 }
             }
             impExpAlertDialog.show()
@@ -863,6 +866,46 @@ class MainActivity : AppCompatActivity() {
         val editor = sharedPreferences.edit()
         editor.remove("custom_list")
         editor.apply()
+    }
+
+    private fun saveFileToExternalStorageNew() {
+        val fileName = "TV-J_ChannelsData.txt"
+        val contentValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+            put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS)
+        }
+        val uri = contentResolver.insert(MediaStore.Files.getContentUri("external"), contentValues)
+        uri?.let {
+            contentResolver.openOutputStream(it)?.use { outputStream ->
+                outputStream.write(exportData.toByteArray())
+                Toast.makeText(this@MainActivity, "File saved in \"Documents/$fileName\"", Toast.LENGTH_LONG).show()
+            } ?: Toast.makeText(this@MainActivity, "Error: file not saved", Toast.LENGTH_LONG).show()
+        } ?: Toast.makeText(this@MainActivity, "Error: file not saved", Toast.LENGTH_LONG).show()
+    }
+
+    private fun saveFileToExternalStorageOld() {
+        val fileName = "TV-J_ChannelsData.txt"
+        val documentsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+        if (!documentsDir.exists()) documentsDir.mkdirs()
+        val file = File(documentsDir, fileName)
+        try {
+            file.writeText(exportData)
+            Toast.makeText(this@MainActivity, "File saved in \"Documents/$fileName\"", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(this@MainActivity, "Error: file not saved", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_CODE_WRITE_EXTERNAL_STORAGE) {
+            if ((grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)) {
+                saveFileToExternalStorageOld()
+            } else {
+                Toast.makeText(this@MainActivity, "Error: access denied", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
 }

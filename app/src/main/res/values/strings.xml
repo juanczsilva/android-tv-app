@@ -16,6 +16,6 @@
     <string name="rebuild_cache">Rebuild cache</string>
     <string name="clear_all">Clear all</string>
     <string name="channels_data">Channels data:</string>
-    <string name="import_current">Import current channels data</string>
-    <string name="export_file">Export channels data to file</string>
+    <string name="import_current">Import current data</string>
+    <string name="export_file">Export data to file</string>
 </resources>
