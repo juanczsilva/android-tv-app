@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.WindowManager
 import android.widget.AdapterView
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ListView
 import android.widget.Toast
@@ -26,7 +27,7 @@ class EditActivity : AppCompatActivity() {
     private lateinit var numberField: EditText
     private lateinit var nameField: EditText
     private lateinit var urlField: EditText
-    private lateinit var optsField: EditText
+    private lateinit var formatField: CheckBox
 
     private val customList: MutableList<Channels.Companion.ListItem> = mutableListOf()
 
@@ -44,22 +45,22 @@ class EditActivity : AppCompatActivity() {
         numberField = findViewById(id.number)
         nameField = findViewById(id.name)
         urlField = findViewById(id.url)
-        optsField = findViewById(id.opts)
+        formatField = findViewById(id.format)
 
-        addBtnsEvts()
+        addButtonsEvents()
         loadCustomList()
         populateList()
     }
 
-    private fun addBtnsEvts() {
+    private fun addButtonsEvents() {
         findViewById<Button>(id.btnAdd).setOnClickListener { _ ->
             val number: Int = (numberField.text.toString()).toInt()
             customList.add(
                 Channels.Companion.ListItem(
                     number = number,
                     name = nameField.text.toString(),
-                    url = urlField.text.toString(),
-                    opts = optsField.text.toString()
+                    url = urlField.text.toString().substringBefore('|'),
+                    opts = parseOptsToString()
                 )
             )
             customList.sortBy { it.number }
@@ -71,8 +72,8 @@ class EditActivity : AppCompatActivity() {
             val number: Int = (numberField.text.toString()).toInt()
             val index: Int = customList.indexOfFirst { it.number == number }
             customList[index].name = nameField.text.toString()
-            customList[index].url = urlField.text.toString()
-            customList[index].opts = optsField.text.toString()
+            customList[index].url = urlField.text.toString().substringBefore('|')
+            customList[index].opts = parseOptsToString()
             adapter.notifyDataSetChanged()
             channelLastActionMap[number] = ChannelActionType.MOD
             alert("MOD: $number")
@@ -118,8 +119,16 @@ class EditActivity : AppCompatActivity() {
             val item = (listView.getItemAtPosition(position) as Channels.Companion.ListItem)
             numberField.setText(item.number.toString())
             nameField.setText(item.name)
-            urlField.setText(item.url)
-            optsField.setText(item.opts)
+            val parsedOpts = parseOptsToJSONObject(item.opts)
+            urlField.setText(
+                if (parsedOpts.has("userAgent"))
+                    item.url + "|User-Agent=" + parsedOpts.getString("userAgent")
+                else
+                    item.url
+            )
+            formatField.isChecked = (
+                    parsedOpts.has("notM3u8") && parsedOpts.getBoolean("notM3u8")
+                ).not()
         }
     }
 
@@ -227,6 +236,32 @@ class EditActivity : AppCompatActivity() {
 
     private fun alert(text: String) {
         Toast.makeText(this@EditActivity, text, Toast.LENGTH_LONG).show()
+    }
+
+    private fun parseOptsToString(): String {
+        val optsParsedObject = JSONObject()
+        val urlFieldText = urlField.text.toString()
+        val delimiterIndex = urlFieldText.indexOf('|')
+        if (delimiterIndex > -1) {
+            val parametersPart = urlFieldText.substring(delimiterIndex + 1)
+            val parameters = parametersPart.split("&")
+            for (parameter in parameters) {
+                val keyValue = parameter.split("=")
+                if (keyValue.size == 2
+                    && (keyValue[0].lowercase() == "User-Agent".lowercase())) {
+                        optsParsedObject.put("userAgent", keyValue[1])
+                }
+            }
+        }
+        optsParsedObject.put("notM3u8", (formatField.isChecked).not())
+        return optsParsedObject.toString()
+    }
+
+    private fun parseOptsToJSONObject(opts: String?): JSONObject {
+        if ((opts.isNullOrEmpty()).not()) {
+            return JSONObject(opts as String)
+        }
+        return JSONObject()
     }
 
 }

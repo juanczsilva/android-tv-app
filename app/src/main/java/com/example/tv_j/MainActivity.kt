@@ -33,9 +33,12 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource.HttpDataSourceException
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
 import com.example.tv_j.R.*
@@ -75,9 +78,6 @@ class MainActivity : AppCompatActivity() {
     private val REQUEST_CODE_WRITE_EXTERNAL_STORAGE = 1
     private var exportData: String = ""
     private val looperHandler = Handler(Looper.getMainLooper())
-
-//    private val testUrl: String =
-//        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -193,12 +193,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupChannels() = runBlocking {
         println("ENTRO EN setupChannels()")
-        val mediaItems: MutableList<MediaItem> = mutableListOf(
-//            MediaItem.Builder().setUri(Uri.parse(testUrl)).setMediaId("0").build()
-        )
+        val mediaSources: MutableList<MediaSource> = mutableListOf()
         if (loadListFromCache()) {
             Channels.List.forEach { listItem ->
-                mediaItems.add(genMediaItem(listItem.number.toString(), listItem.url, listItem.opts))
+                mediaSources.add(genMediaSource(listItem))
             }
             loadedFromCache = true
         } else {
@@ -211,27 +209,42 @@ class MainActivity : AppCompatActivity() {
                     iterate.set(listItem)
                 }
                 println("(${listItem.number.toString()}) ${listItem.name} - ${listItem.url}")
-                mediaItems.add(genMediaItem(listItem.number.toString(), listItem.url, listItem.opts))
+                mediaSources.add(genMediaSource(listItem))
             }
             saveListToCache()
             println("---------------------------------")
         }
-        exoPlayer.setMediaItems(mediaItems)
+        exoPlayer.setMediaSources(mediaSources)
         println("SETEO LOS MediaItems")
     }
 
-    private fun genMediaItem(id: String, url: String, opts: String?): MediaItem {
-        if (opts != null && !(opts.isEmpty())) {
-            if (JSONObject(opts).getBoolean("notM3u8")) {
-                return MediaItem.Builder()
-                    .setMediaId(id)
-                    .setUri(Uri.parse(url)).build()
+    private fun genMediaSource(listItem: Channels.Companion.ListItem): MediaSource {
+        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+        var optsJSONObject: JSONObject? = null
+        var userAgent: String = ""
+        if (listItem.opts != null && listItem.opts!!.isNotEmpty()) {
+            optsJSONObject = JSONObject(listItem.opts as String)
+            if (optsJSONObject.has("userAgent")
+                && optsJSONObject.getString("userAgent").isNotEmpty()) {
+                    userAgent = optsJSONObject.getString("userAgent")
             }
         }
-        return MediaItem.Builder()
-            .setMediaId(id)
-            .setUri(Uri.parse(url))
-            .setMimeType(MimeTypes.APPLICATION_M3U8).build()
+        if (userAgent.isNotEmpty()) {
+            httpDataSourceFactory.setUserAgent(userAgent)
+        }
+        val mediaSourceFactory = DefaultMediaSourceFactory(httpDataSourceFactory)
+        return mediaSourceFactory.createMediaSource(
+            genMediaItem(listItem.number.toString(), listItem.url, optsJSONObject)
+        )
+    }
+
+    private fun genMediaItem(id: String, url: String, optsJSONObject: JSONObject?): MediaItem {
+        val mediaItem = MediaItem.Builder().setMediaId(id).setUri(Uri.parse(url))
+        if (optsJSONObject != null && optsJSONObject.has("notM3u8")
+            && optsJSONObject.getBoolean("notM3u8")) {
+                return mediaItem.build()
+        }
+        return mediaItem.setMimeType(MimeTypes.APPLICATION_M3U8).build()
     }
 
     private suspend fun fetchStreamUrl(url: String): String {

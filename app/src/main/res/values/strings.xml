@@ -5,6 +5,7 @@
     <string name="name">Name</string>
     <string name="url">URL</string>
     <string name="opts">Opts</string>
+    <string name="m3u8">M3U8</string>
     <string name="add">ADD</string>
     <string name="mod">MOD</string>
     <string name="del">DEL</string>
