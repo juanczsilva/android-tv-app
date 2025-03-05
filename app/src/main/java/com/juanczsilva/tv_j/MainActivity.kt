@@ -1,10 +1,9 @@
-package com.example.tv_j
+package com.juanczsilva.tv_j
 
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.drawable.Drawable
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
@@ -18,7 +17,6 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.AdapterView
-import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -41,7 +39,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
-import com.example.tv_j.R.*
+import com.juanczsilva.tv_j.R.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -520,7 +518,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onBackButtonShortPressed() {
-//        println("Botón de volver atrás presionado y liberado rápidamente")
         if (menuView.visibility == View.VISIBLE) {
             menuView.visibility = View.GONE
         } else if (listView.visibility == View.VISIBLE) {
@@ -541,7 +538,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onMenuButtonShortPressed() {
-//        println("Botón de menu presionado y liberado rápidamente (adb shell input keyevent 82)")
+//        println("adb shell input keyevent 82")
         if (menuView.visibility == View.VISIBLE) {
             menuView.visibility = View.GONE
         } else {

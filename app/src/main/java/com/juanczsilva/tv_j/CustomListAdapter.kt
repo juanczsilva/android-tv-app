@@ -1,4 +1,4 @@
-package com.example.tv_j
+package com.juanczsilva.tv_j
 
 import android.content.Context
 import android.view.LayoutInflater

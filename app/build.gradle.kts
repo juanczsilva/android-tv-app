@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.tv_j"
+    namespace = "com.juanczsilva.tv_j"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.tv_j"
+        applicationId = "com.juanczsilva.tv_j"
         minSdk = 28
         targetSdk = 34
         versionCode = 1

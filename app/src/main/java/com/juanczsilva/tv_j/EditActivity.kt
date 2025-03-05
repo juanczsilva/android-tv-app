@@ -1,4 +1,4 @@
-package com.example.tv_j
+package com.juanczsilva.tv_j
 
 import android.content.Context
 import android.content.Intent
@@ -11,7 +11,7 @@ import android.widget.EditText
 import android.widget.ListView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import com.example.tv_j.R.*
+import com.juanczsilva.tv_j.R.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
