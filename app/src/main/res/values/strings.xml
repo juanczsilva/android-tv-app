@@ -19,4 +19,6 @@
     <string name="channels_data">Channels data:</string>
     <string name="import_current">Import current data</string>
     <string name="export_file">Export data to file</string>
+    <string name="quality">Quality:</string>
+    <string name="mpd">MPD</string>
 </resources>

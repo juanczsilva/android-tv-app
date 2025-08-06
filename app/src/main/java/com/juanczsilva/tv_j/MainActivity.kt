@@ -1,5 +1,6 @@
 package com.juanczsilva.tv_j
 
+import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -13,6 +14,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.provider.Settings
+import android.util.Base64
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
@@ -27,14 +29,20 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource.HttpDataSourceException
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
+import androidx.media3.exoplayer.drm.DrmSessionManager
+import androidx.media3.exoplayer.drm.FrameworkMediaDrm
+import androidx.media3.exoplayer.drm.LocalMediaDrmCallback
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -49,6 +57,7 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
+@UnstableApi
 class MainActivity : AppCompatActivity() {
 
     private lateinit var playerView: PlayerView
@@ -73,9 +82,12 @@ class MainActivity : AppCompatActivity() {
     private var loadedFromCache = false
     private var currentQuality: String = ""
     private var currentVolume: Float = 0.50f
-    private val REQUEST_CODE_WRITE_EXTERNAL_STORAGE = 1
     private var exportData: String = ""
     private val looperHandler = Handler(Looper.getMainLooper())
+
+    companion object {
+        private const val REQUEST_CODE_WRITE_EXTERNAL_STORAGE = 1
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -96,8 +108,8 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Loading from cache...", Toast.LENGTH_LONG).show()
         }
 
-        numberView = findViewById(R.id.currentNumber)
-        volumeView = findViewById(R.id.volume_view)
+        numberView = findViewById(id.currentNumber)
+        volumeView = findViewById(id.volume_view)
 
         exoPlayer.prepare()
         println("EXO PREPARADO")
@@ -124,6 +136,7 @@ class MainActivity : AppCompatActivity() {
                 println("### Error ${error.errorCode}: ${error.message} ###")
             }
         }
+        @SuppressLint("SwitchIntDef")
         override fun onPlaybackStateChanged(playbackState: Int) {
             when (playbackState) {
                 Player.STATE_IDLE -> {
@@ -206,7 +219,7 @@ class MainActivity : AppCompatActivity() {
                     listItem.url = fetchStreamUrl(listItem.url)
                     iterate.set(listItem)
                 }
-                println("(${listItem.number.toString()}) ${listItem.name} - ${listItem.url}")
+                println("(${listItem.number}) ${listItem.name} - ${listItem.url}")
                 mediaSources.add(genMediaSource(listItem))
             }
             saveListToCache()
@@ -219,18 +232,31 @@ class MainActivity : AppCompatActivity() {
     private fun genMediaSource(listItem: Channels.Companion.ListItem): MediaSource {
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
         var optsJSONObject: JSONObject? = null
-        var userAgent: String = ""
+        var userAgent = ""
+        var key = ""
+        var keyId = ""
         if (listItem.opts != null && listItem.opts!!.isNotEmpty()) {
             optsJSONObject = JSONObject(listItem.opts as String)
             if (optsJSONObject.has("userAgent")
                 && optsJSONObject.getString("userAgent").isNotEmpty()) {
                     userAgent = optsJSONObject.getString("userAgent")
             }
+            if (optsJSONObject.has("notM3u8") && optsJSONObject.getBoolean("notM3u8")
+                && optsJSONObject.has("isMpd") && optsJSONObject.getBoolean("isMpd")) {
+                key = (if (optsJSONObject.has("key"))
+                    optsJSONObject.getString("key") else "")
+                keyId = (if (optsJSONObject.has("keyId"))
+                    optsJSONObject.getString("keyId") else "")
+            }
         }
         if (userAgent.isNotEmpty()) {
             httpDataSourceFactory.setUserAgent(userAgent)
         }
         val mediaSourceFactory = DefaultMediaSourceFactory(httpDataSourceFactory)
+        if (key.isNotEmpty() && keyId.isNotEmpty()) {
+            val drmSessionManagerProvider: DrmSessionManager = genDrmSessionManagerProvider(key, keyId)
+            mediaSourceFactory.setDrmSessionManagerProvider { drmSessionManagerProvider }
+        }
         return mediaSourceFactory.createMediaSource(
             genMediaItem(listItem.number.toString(), listItem.url, optsJSONObject)
         )
@@ -238,11 +264,39 @@ class MainActivity : AppCompatActivity() {
 
     private fun genMediaItem(id: String, url: String, optsJSONObject: JSONObject?): MediaItem {
         val mediaItem = MediaItem.Builder().setMediaId(id).setUri(Uri.parse(url))
-        if (optsJSONObject != null && optsJSONObject.has("notM3u8")
-            && optsJSONObject.getBoolean("notM3u8")) {
+        if (optsJSONObject != null
+            && optsJSONObject.has("notM3u8") && optsJSONObject.getBoolean("notM3u8")) {
+                if (optsJSONObject.has("isMpd") && optsJSONObject.getBoolean("isMpd")) {
+                    return mediaItem.setMimeType(MimeTypes.APPLICATION_MPD).build()
+                }
                 return mediaItem.build()
         }
         return mediaItem.setMimeType(MimeTypes.APPLICATION_M3U8).build()
+    }
+
+    private fun genDrmSessionManagerProvider(key: String, keyId: String): DefaultDrmSessionManager {
+        val drmKeyBytes = key.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val encodedDrmKey = Base64.encodeToString(drmKeyBytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+        val drmKeyIdBytes = keyId.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val encodedDrmKeyId = Base64.encodeToString(drmKeyIdBytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+        val clearKeyBody = """
+            {
+                "keys":[
+                    {
+                        "kty":"oct",
+                        "kid":"$encodedDrmKeyId",
+                        "k":"$encodedDrmKey"
+                    }
+                ]
+            }
+        """.trimIndent()
+        val drmCallback = LocalMediaDrmCallback(clearKeyBody.toByteArray())
+        val drmSessionManager = DefaultDrmSessionManager.Builder()
+            .setMultiSession(false)
+            .setKeyRequestParameters(HashMap())
+            .setUuidAndExoMediaDrmProvider(C.CLEARKEY_UUID, FrameworkMediaDrm.DEFAULT_PROVIDER)
+            .build(drmCallback)
+        return drmSessionManager
     }
 
     private suspend fun fetchStreamUrl(url: String): String {
@@ -283,7 +337,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun populateList() {
-        listView = findViewById(R.id.listView)
+        listView = findViewById(id.listView)
         val adapter = CustomListAdapter(this, Channels.List)
         listView.adapter = adapter
         listView.onItemClickListener = AdapterView.OnItemClickListener { _, _, position, _ ->
@@ -342,7 +396,7 @@ class MainActivity : AppCompatActivity() {
                         isDpadCenterPressed = true
                         looperHandler.postDelayed(dpadCenterLongPressRunnable, longPressTimeout)
                     }
-                    return@onKeyDown true
+                    return true
                 }
                 false
             }
@@ -356,11 +410,11 @@ class MainActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_DPAD_UP -> {
                 if (listView.visibility != View.VISIBLE && menuView.visibility != View.VISIBLE) {
                     changeChannel(-1)
-                    return@onKeyDown true
+                    return true
                 } else if (menuView.visibility == View.VISIBLE) {
                     if (findViewById<Button>(id.select_quality_button).hasFocus()) {
                         findViewById<Button>(id.clear_all_button).requestFocus()
-                        return@onKeyDown true
+                        return true
                     }
                 }
                 false
@@ -368,11 +422,11 @@ class MainActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_DPAD_DOWN -> {
                 if (listView.visibility != View.VISIBLE && menuView.visibility != View.VISIBLE) {
                     changeChannel(1)
-                    return@onKeyDown true
+                    return true
                 } else if (menuView.visibility == View.VISIBLE) {
                     if (findViewById<Button>(id.clear_all_button).hasFocus()) {
                         findViewById<Button>(id.select_quality_button).requestFocus()
-                        return@onKeyDown true
+                        return true
                     }
                 }
                 false
@@ -444,7 +498,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun changeChannel(direction: Int) {
         lastChannelPosition = exoPlayer.currentMediaItemIndex
-        var changedChannelPosition: Int
+        val changedChannelPosition: Int
         if (direction > 0) {
             if (exoPlayer.hasNextMediaItem()) {
                 changedChannelPosition = exoPlayer.nextMediaItemIndex
@@ -684,13 +738,16 @@ class MainActivity : AppCompatActivity() {
             }
             qualityAlertDialog.show()
         }
-        findViewById<Button>(id.select_quality_button).text = "Quality: " + currentQuality
+        findViewById<Button>(id.select_quality_button).text = buildString {
+            append(getString(string.quality) + ' ')
+            append(currentQuality)
+        }
 
         findViewById<Button>(id.import_export_button).setOnClickListener {
-            val impExpDialogView = layoutInflater.inflate(R.layout.dialog_custom, null)
-            val impExpDialogText = impExpDialogView.findViewById<EditText>(R.id.channels_data)
-            val impExpDialogImpBtn = impExpDialogView.findViewById<Button>(R.id.import_button)
-            val impExpDialogExpBtn = impExpDialogView.findViewById<Button>(R.id.export_button)
+            val impExpDialogView = layoutInflater.inflate(layout.dialog_custom, null)
+            val impExpDialogText = impExpDialogView.findViewById<EditText>(id.channels_data)
+            val impExpDialogImpBtn = impExpDialogView.findViewById<Button>(id.import_button)
+            val impExpDialogExpBtn = impExpDialogView.findViewById<Button>(id.export_button)
             val impExpAlertBuilder = AlertDialog.Builder(this,
                 style.CustomAlertDialogTheme).setView(impExpDialogView)
             val impExpAlertDialog = impExpAlertBuilder.create()
@@ -767,9 +824,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun getQualityByName(qualityName: String?): Pair<Int, Int> {
-        var maxVideoWidth: Int = 0
-        var maxVideoHeight: Int = 0
-        if (qualityName != null && !qualityName.isEmpty()) {
+        var maxVideoWidth = 0
+        var maxVideoHeight = 0
+        if (!qualityName.isNullOrEmpty()) {
             when (qualityName) {
                 "1080p" -> {
                     maxVideoWidth = 1920
@@ -812,7 +869,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onQualityChange(theNewQuality: String) {
-        var (w, h) = getQualityByName(theNewQuality)
+        val (w, h) = getQualityByName(theNewQuality)
         if (w > 0 && h > 0) {
             trackSelector.parameters = trackSelector.buildUponParameters()
                 .setMaxVideoSize(w, h)
@@ -826,7 +883,10 @@ class MainActivity : AppCompatActivity() {
         val editor = sharedPreferences.edit()
         editor.putString("cachedQuality", theNewQuality)
         editor.apply()
-        findViewById<Button>(id.select_quality_button).text = "Quality: " + currentQuality
+        findViewById<Button>(id.select_quality_button).text = buildString {
+            append(getString(string.quality) + ' ')
+            append(currentQuality)
+        }
     }
 
     private fun getCurrentControlSwitch(): Boolean {

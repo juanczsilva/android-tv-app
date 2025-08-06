@@ -11,6 +11,7 @@ import android.widget.EditText
 import android.widget.ListView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.media3.common.util.UnstableApi
 import com.juanczsilva.tv_j.R.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -20,6 +21,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
+@UnstableApi
 class EditActivity : AppCompatActivity() {
 
     private lateinit var listView: ListView
@@ -28,6 +30,7 @@ class EditActivity : AppCompatActivity() {
     private lateinit var nameField: EditText
     private lateinit var urlField: EditText
     private lateinit var formatField: CheckBox
+    private lateinit var formatMpdField: CheckBox
 
     private val customList: MutableList<Channels.Companion.ListItem> = mutableListOf()
 
@@ -46,6 +49,7 @@ class EditActivity : AppCompatActivity() {
         nameField = findViewById(id.name)
         urlField = findViewById(id.url)
         formatField = findViewById(id.format)
+        formatMpdField = findViewById(id.format_mpd)
 
         addButtonsEvents()
         loadCustomList()
@@ -53,6 +57,12 @@ class EditActivity : AppCompatActivity() {
     }
 
     private fun addButtonsEvents() {
+        formatField.setOnCheckedChangeListener { _, checked ->
+            if (checked) formatMpdField.isChecked = false
+        }
+        formatMpdField.setOnCheckedChangeListener { _, checked ->
+            if (checked) formatField.isChecked = false
+        }
         findViewById<Button>(id.btnAdd).setOnClickListener { _ ->
             val number: Int = (numberField.text.toString()).toInt()
             customList.add(
@@ -120,15 +130,26 @@ class EditActivity : AppCompatActivity() {
             numberField.setText(item.number.toString())
             nameField.setText(item.name)
             val parsedOpts = parseOptsToJSONObject(item.opts)
+            val urlOpts: MutableList<String> = mutableListOf()
+            if (parsedOpts.has("userAgent")) {
+                urlOpts.add("User-Agent=" + parsedOpts.getString("userAgent"))
+            }
+            if (parsedOpts.has("key")) {
+                urlOpts.add("key=" + parsedOpts.getString("key"))
+            }
+            if (parsedOpts.has("keyId")) {
+                urlOpts.add("keyId=" + parsedOpts.getString("keyId"))
+            }
             urlField.setText(
-                if (parsedOpts.has("userAgent"))
-                    item.url + "|User-Agent=" + parsedOpts.getString("userAgent")
-                else
-                    item.url
+                if (urlOpts.size > 0) item.url + "|" + urlOpts.joinToString("&")
+                else item.url
             )
             formatField.isChecked = (
                     parsedOpts.has("notM3u8") && parsedOpts.getBoolean("notM3u8")
                 ).not()
+            formatMpdField.isChecked = (
+                    parsedOpts.has("isMpd") && parsedOpts.getBoolean("isMpd")
+                )
         }
     }
 
@@ -247,13 +268,21 @@ class EditActivity : AppCompatActivity() {
             val parameters = parametersPart.split("&")
             for (parameter in parameters) {
                 val keyValue = parameter.split("=")
-                if (keyValue.size == 2
-                    && (keyValue[0].lowercase() == "User-Agent".lowercase())) {
+                if (keyValue.size == 2) {
+                    if (keyValue[0].lowercase() == "User-Agent".lowercase()) {
                         optsParsedObject.put("userAgent", keyValue[1])
+                    }
+                    if (keyValue[0].lowercase() == "key".lowercase()) {
+                        optsParsedObject.put("key", keyValue[1])
+                    }
+                    if (keyValue[0].lowercase() == "keyId".lowercase()) {
+                        optsParsedObject.put("keyId", keyValue[1])
+                    }
                 }
             }
         }
         optsParsedObject.put("notM3u8", (formatField.isChecked).not())
+        optsParsedObject.put("isMpd", (formatMpdField.isChecked))
         return optsParsedObject.toString()
     }
 
